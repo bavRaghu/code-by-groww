@@ -1,0 +1,52 @@
+# ============================================================
+# Smart Market Watchlist – .gitignore
+# ============================================================
+
+# ---------------------------
+# Python / Backend
+# ---------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+.env
+.venv/
+venv/
+env/
+.python-version
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+*.log
+
+# ---------------------------
+# Node / Frontend
+# ---------------------------
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+.npm
+
+# ---------------------------
+# Docker
+# ---------------------------
+# keep docker-compose.yml but ignore local override
+docker-compose.override.yml
+
+# ---------------------------
+# IDE / OS
+# ---------------------------
+.vscode/settings.json
+.idea/
+*.DS_Store
+Thumbs.db
