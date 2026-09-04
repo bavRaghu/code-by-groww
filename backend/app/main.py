@@ -7,6 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.api.v1.health import router as health_router
+from app.api.v1.instruments import router as instruments_router
+from app.api.v1.watchlists import router as watchlists_router
+from app.api.v1.market import router as market_router
 
 
 def create_app() -> FastAPI:
@@ -36,6 +39,9 @@ def create_app() -> FastAPI:
     # Routers
     # ------------------------------------------------------------------
     app.include_router(health_router, prefix="/api/v1")
+    app.include_router(instruments_router, prefix="/api/v1")
+    app.include_router(watchlists_router, prefix="/api/v1")
+    app.include_router(market_router, prefix="/api/v1")
 
     return app
 
