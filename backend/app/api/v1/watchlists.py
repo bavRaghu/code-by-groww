@@ -25,10 +25,20 @@ from app.schemas.change import (
     WatchlistCheckResponse,
     WatchlistChangesResponse,
 )
-from app.schemas.attention import WatchlistAttentionResponse
+from app.schemas.attention import (
+    ChangeReviewResponse,
+    InstrumentReviewResponse,
+    WatchlistAttentionResponse,
+    WatchlistReviewAllResponse,
+)
 from app.services.user_observation import mark_watchlist_checked
 from app.services.change_detection import detect_changes_for_watchlist
 from app.services.attention import get_watchlist_attention
+from app.services.review import (
+    review_all_watchlist_changes,
+    review_detected_change,
+    review_instrument_changes,
+)
 from app.seed import DEV_USER_ID
 
 
@@ -416,4 +426,77 @@ async def get_watchlist_attention_endpoint(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.post("/{watchlist_id}/changes/{change_id}/review", response_model=ChangeReviewResponse)
+async def review_change_endpoint(
+    watchlist_id: int,
+    change_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> ChangeReviewResponse:
+    try:
+        change, review_record = await review_detected_change(
+            db=db,
+            user_id=DEV_USER_ID,
+            watchlist_id=watchlist_id,
+            change_id=change_id,
+        )
+        return ChangeReviewResponse(
+            change_id=change.id,
+            review_status=change.review_status,
+            reviewed_at=change.reviewed_at or review_record.reviewed_at,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.post("/{watchlist_id}/instruments/{instrument_id}/review", response_model=InstrumentReviewResponse)
+async def review_instrument_endpoint(
+    watchlist_id: int,
+    instrument_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> InstrumentReviewResponse:
+    try:
+        count = await review_instrument_changes(
+            db=db,
+            user_id=DEV_USER_ID,
+            watchlist_id=watchlist_id,
+            instrument_id=instrument_id,
+        )
+        return InstrumentReviewResponse(
+            instrument_id=instrument_id,
+            reviewed_changes_count=count,
+            review_status="reviewed",
+            reviewed_at=datetime.now(timezone.utc),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+
+@router.post("/{watchlist_id}/review-all", response_model=WatchlistReviewAllResponse)
+async def review_all_watchlist_endpoint(
+    watchlist_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> WatchlistReviewAllResponse:
+    try:
+        count = await review_all_watchlist_changes(
+            db=db,
+            user_id=DEV_USER_ID,
+            watchlist_id=watchlist_id,
+        )
+        return WatchlistReviewAllResponse(
+            watchlist_id=watchlist_id,
+            reviewed_changes_count=count,
+            review_status="reviewed",
+            reviewed_at=datetime.now(timezone.utc),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
 

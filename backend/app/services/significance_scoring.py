@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import math
 from dataclasses import dataclass
 from decimal import Decimal
@@ -76,7 +76,13 @@ def compute_magnitude_score(
         equal = sum(1 for h in historical_abs_returns if h == r_curr)
         rank = (strictly_less + 0.5 * equal) / float(n)
         rank = max(0.0, min(1.0, rank))
-        score = Decimal(str(round(rank, 4)))
+
+        # Scale by absolute magnitude if return is below 1% to prevent microscopic moves
+        # (<0.01) from receiving high percentile scores due to flat historical ties
+        scale = min(r_curr / 0.01, 1.0)
+        rank_scaled = rank * scale
+
+        score = Decimal(str(round(rank_scaled, 4)))
         return score, {
             "method": "empirical_percentile",
             "percentile": round(rank * 100, 2),
@@ -92,6 +98,7 @@ def compute_magnitude_score(
             "sample_size": len(historical_abs_returns) if historical_abs_returns else 0,
             "current_abs_return": round(r_curr, 6),
         }
+
 
 
 def compute_abnormality_score(
@@ -258,6 +265,185 @@ def generate_explanation(
         sentences.append(f"({'; '.join(missing_notes)}).")
 
     return " ".join(sentences)
+
+
+def generate_structured_explanation(
+    symbol: str,
+    level: SignificanceLevel,
+    mag_score: Decimal | None,
+    abn_score: Decimal | None,
+    rel_score: Decimal | None,
+    vol_score: Decimal | None,
+    event_score: Decimal | None,
+    evidence: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Generates a structured, evidence-based, non-causal explanation with:
+    - what_happened: factual movement description
+    - why_it_stands_out: primary context why it surfaced
+    - supporting_evidence: list of corroborating evidence bullets
+    - missing_data_notes: explicit disclosures of unavailable data
+    Never states unsupported causality (e.g. 'caused by').
+    """
+    pct_change = evidence.get("price", {}).get("percentage_change")
+    abs_change = evidence.get("price", {}).get("absolute_change")
+    z_score = evidence.get("abnormality", {}).get("z_score")
+    vol_ratio = evidence.get("volume", {}).get("volume_ratio")
+    excess_ret = evidence.get("relative_performance", {}).get("excess_return")
+    benchmark_sym = evidence.get("relative_performance", {}).get("benchmark_symbol", "benchmark")
+    events = evidence.get("event", {}).get("events") or []
+
+    # 1. What happened
+    if pct_change is not None:
+        sign = "+" if pct_change > 0 else ""
+        if abs_change is not None:
+            what_happened = f"{symbol} moved {sign}{pct_change:.2f}% ({sign}₹{abs_change:.2f}) since you last checked."
+        else:
+            what_happened = f"{symbol} moved {sign}{pct_change:.2f}% since you last checked."
+    else:
+        what_happened = f"Market change detected for {symbol} since you last checked."
+
+    # 2. Why it stands out
+    if level == SignificanceLevel.HIGH:
+        if abn_score is not None and abn_score >= Decimal("0.70"):
+            why_it_stands_out = f"The move was unusually large relative to {symbol}'s recent history."
+        else:
+            why_it_stands_out = "Substantial price movement detected with strong corroborating evidence."
+    elif level == SignificanceLevel.MEDIUM:
+        if abn_score is not None and abn_score >= Decimal("0.40"):
+            why_it_stands_out = f"Price movement was larger than typical for {symbol}, with moderate corroborating signals."
+        else:
+            why_it_stands_out = "Noteworthy market movement with partial supporting evidence."
+    elif level == SignificanceLevel.LOW:
+        why_it_stands_out = "Price changed modestly, with some evidence of unusual activity."
+    else:
+        why_it_stands_out = "Movement remained within normal historical variance."
+
+    # 3. Supporting evidence
+    supporting_evidence: list[str] = []
+    if vol_ratio is not None:
+        if vol_ratio >= 1.25:
+            supporting_evidence.append(f"Trading volume was approximately {vol_ratio:.1f}× its recent median.")
+        elif vol_ratio <= 0.75:
+            supporting_evidence.append(f"Trading volume was unusually low ({vol_ratio:.1f}× its recent median).")
+
+    if excess_ret is not None:
+        dir_str = "outperformed" if excess_ret > 0 else "underperformed"
+        bm_ret = evidence.get("relative_performance", {}).get("benchmark_return")
+        stock_ret = evidence.get("relative_performance", {}).get("stock_return")
+        if bm_ret is not None and stock_ret is not None:
+            s_action = "gained" if stock_ret >= 0 else "declined"
+            b_action = "gained" if bm_ret >= 0 else "declined"
+            supporting_evidence.append(
+                f"{symbol} {s_action} {abs(stock_ret * 100):.1f}% while {benchmark_sym} {b_action} {abs(bm_ret * 100):.1f}%, indicating {dir_str} benchmark by {abs(excess_ret * 100):.2f} percentage points."
+            )
+        else:
+            supporting_evidence.append(f"The stock {dir_str} {benchmark_sym} by {abs(excess_ret * 100):.2f} percentage points.")
+
+    if z_score is not None and abs(z_score) >= 1.0:
+        supporting_evidence.append(f"The move was unusually large relative to recent return distribution (z = {z_score:+.2f}).")
+
+    if events:
+        first_ev = events[0] if isinstance(events, list) and events else {}
+        ev_title = first_ev.get("title") or first_ev.get("description") or "Material corporate event"
+        supporting_evidence.append(f"Potentially relevant company context: {ev_title} coincided with this period.")
+
+    # 4. Missing data notes
+    missing_data_notes: list[str] = []
+    if evidence.get("relative_performance", {}).get("status") == "benchmark_data_unavailable":
+        missing_data_notes.append("Benchmark comparison unavailable")
+    if evidence.get("abnormality", {}).get("status") == "insufficient_history_or_unavailable":
+        missing_data_notes.append("Insufficient history for statistical abnormality calculation")
+    if evidence.get("volume", {}).get("status") == "insufficient_volume_history_or_unavailable":
+        missing_data_notes.append("Insufficient volume history")
+
+    return {
+        "what_happened": what_happened,
+        "why_it_stands_out": why_it_stands_out,
+        "supporting_evidence": supporting_evidence,
+        "missing_data_notes": missing_data_notes,
+    }
+
+
+def compute_evidence_completeness(
+    level: SignificanceLevel,
+    mag_score: Decimal | None,
+    abn_score: Decimal | None,
+    rel_score: Decimal | None,
+    vol_score: Decimal | None,
+    event_score: Decimal | None,
+    evidence: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Evaluates evidence quality distinguishing:
+    'Something significant happened' from 'We have enough evidence to confidently explain what happened.'
+    Identifies available corroborating signals vs missing market context.
+    """
+    available_signals: list[str] = []
+    missing_signals: list[str] = []
+
+    # Price / Magnitude
+    if mag_score is not None:
+        available_signals.append("price move")
+
+    # Abnormality
+    if abn_score is not None:
+        available_signals.append("historical volatility")
+    elif evidence.get("abnormality", {}).get("status") == "insufficient_history_or_unavailable":
+        missing_signals.append("historical volatility distribution")
+
+    # Relative performance
+    if rel_score is not None:
+        available_signals.append("relative-performance")
+    elif evidence.get("relative_performance", {}).get("status") == "benchmark_data_unavailable":
+        missing_signals.append("benchmark comparison")
+
+    # Volume
+    if vol_score is not None:
+        available_signals.append("volume")
+    elif evidence.get("volume", {}).get("status") == "insufficient_volume_history_or_unavailable":
+        missing_signals.append("volume history")
+
+    # Material event
+    if event_score is not None and event_score > Decimal("0.0"):
+        available_signals.append("company event")
+
+    # Corroborating signals count beyond raw price move
+    corroborating_count = len([s for s in available_signals if s != "price move"])
+
+    level_name = level.value.capitalize()
+    if corroborating_count >= 2:
+        completeness_level = "STRONG"
+        summary_str = f"{level_name} significance — supported by {', '.join(available_signals)} signals."
+    elif corroborating_count == 1:
+        completeness_level = "MODERATE"
+        summary_str = f"{level_name} significance — supported by {', '.join(available_signals)}."
+        if missing_signals:
+            summary_str += f" ({missing_signals[0]} unavailable)."
+    else:
+        completeness_level = "LIMITED"
+        summary_str = f"{level_name} significance — large price movement detected, but supporting market context is unavailable."
+
+    return {
+        "level": completeness_level,
+        "available_signals_count": len(available_signals),
+        "total_signals_count": 5,
+        "summary": summary_str,
+        "available_signals": available_signals,
+        "missing_signals": missing_signals,
+    }
+
+
+def format_freshness_note(source: str = "NSE", current_observed_at: Any = None) -> str:
+    """
+    Formats transparent data provenance and freshness note.
+    Never refers to historical end-of-day data as 'live'.
+    """
+    if current_observed_at and hasattr(current_observed_at, "strftime"):
+        date_str = current_observed_at.strftime("%b %d, %Y, %I:%M %p")
+        return f"Based on {source} market data through {date_str} IST."
+    return f"Based on {source} market data."
+
 
 
 def calculate_significance(

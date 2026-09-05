@@ -41,7 +41,7 @@ async def test_watchlist_crud_lifecycle(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_watchlist_items_management(client: AsyncClient):
     # Setup: get instruments
-    inst_res = await client.get("/api/v1/instruments")
+    inst_res = await client.get("/api/v1/instruments?limit=100")
     instruments = inst_res.json()
     inst_map = {inst["nse_symbol"]: inst["id"] for inst in instruments}
 

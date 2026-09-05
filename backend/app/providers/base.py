@@ -17,6 +17,8 @@ class NormalizedObservation:
     observed_at: datetime
     source: str
     data_status: str
+    isin: str | None = None
+    company_name: str | None = None
 
 
 @dataclass
@@ -43,3 +45,23 @@ class MarketDataProvider(ABC):
         Parses a market-data file into normalized market observations.
         """
         raise NotImplementedError
+
+    def get_available_sessions(self) -> list[datetime]:
+        """
+        Returns chronologically sorted list of session timestamps available from this provider.
+        """
+        return []
+
+    def get_available_instruments(self) -> list[dict[str, str | None]]:
+        """
+        Returns the list of instruments (nse_symbol, company_name, isin, exchange) available from this provider.
+        """
+        return []
+
+    def get_observations_for_session(
+        self, session_time: datetime
+    ) -> list[NormalizedObservation]:
+        """
+        Returns normalized observations for the given session date/time.
+        """
+        return []

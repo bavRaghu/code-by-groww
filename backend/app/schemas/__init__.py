@@ -21,6 +21,16 @@ from app.schemas.attention import (
     ComponentScores,
     AttentionSummary,
     WatchlistAttentionResponse,
+    InstrumentReference,
+    StructuredExplanation,
+    UnderlyingChangeSummary,
+    InsufficientDataItem,
+    QuietInstrumentItem,
+    EvidenceCompleteness,
+    ChangeFeedItem,
+    ChangeReviewResponse,
+    InstrumentReviewResponse,
+    WatchlistReviewAllResponse,
 )
 
 __all__ = [
@@ -44,5 +54,16 @@ __all__ = [
     "ComponentScores",
     "AttentionSummary",
     "WatchlistAttentionResponse",
+    "InstrumentReference",
+    "StructuredExplanation",
+    "UnderlyingChangeSummary",
+    "InsufficientDataItem",
+    "QuietInstrumentItem",
+    "EvidenceCompleteness",
+    "ChangeFeedItem",
+    "ChangeReviewResponse",
+    "InstrumentReviewResponse",
+    "WatchlistReviewAllResponse",
 ]
+
 

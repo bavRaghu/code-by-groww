@@ -79,3 +79,32 @@ export async function fetchWatchlistAttention(watchlistId) {
   return handleResponse(res);
 }
 
+export async function refreshWatchlistMarket(watchlistId) {
+  const res = await fetch(`${BASE_URL}/api/v1/watchlists/${watchlistId}/refresh`, {
+    method: 'POST',
+  });
+  return handleResponse(res);
+}
+
+export async function reviewChange(watchlistId, changeId) {
+  const res = await fetch(`${BASE_URL}/api/v1/watchlists/${watchlistId}/changes/${changeId}/review`, {
+    method: 'POST',
+  });
+  return handleResponse(res);
+}
+
+export async function reviewInstrumentChanges(watchlistId, instrumentId) {
+  const res = await fetch(`${BASE_URL}/api/v1/watchlists/${watchlistId}/instruments/${instrumentId}/review`, {
+    method: 'POST',
+  });
+  return handleResponse(res);
+}
+
+export async function reviewAllWatchlistChanges(watchlistId) {
+  const res = await fetch(`${BASE_URL}/api/v1/watchlists/${watchlistId}/review-all`, {
+    method: 'POST',
+  });
+  return handleResponse(res);
+}
+
+

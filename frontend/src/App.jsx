@@ -11,6 +11,10 @@ import {
   checkWatchlist,
   fetchWatchlistChanges,
   fetchWatchlistAttention,
+  refreshWatchlistMarket,
+  reviewChange,
+  reviewInstrumentChanges,
+  reviewAllWatchlistChanges,
 } from './api';
 
 function formatDateTime(isoString) {
@@ -43,6 +47,20 @@ function getAttentionLevelMeta(level) {
   }
 }
 
+function getEvidenceCompletenessMeta(completeness) {
+  if (!completeness) return null;
+  switch (completeness.level) {
+    case 'STRONG':
+      return { label: 'Strong Evidence', badgeClass: 'evidence-badge--strong', summary: completeness.summary };
+    case 'MODERATE':
+      return { label: 'Moderate Evidence', badgeClass: 'evidence-badge--moderate', summary: completeness.summary };
+    case 'LIMITED':
+      return { label: 'Limited Context', badgeClass: 'evidence-badge--limited', summary: completeness.summary };
+    default:
+      return null;
+  }
+}
+
 function getChangeTypeMeta(type) {
   switch (type) {
     case 'PRICE_MOVE':
@@ -68,6 +86,8 @@ function App() {
   const [attentionData, setAttentionData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState(null);
   const [error, setError] = useState(null);
 
 
@@ -241,13 +261,18 @@ function App() {
     }
   };
 
-  // Action: Mark Watchlist as Checked (Check Watchlist)
+  // Action: Mark Watchlist as Checked (advances baseline to current market snapshot)
   const handleCheckWatchlist = async () => {
     if (!activeWatchlistId) return;
     setChecking(true);
     setError(null);
     try {
       await checkWatchlist(activeWatchlistId);
+      setRefreshMessage({
+        type: 'info',
+        text: 'Baseline updated to current market observation. All changes acknowledged.',
+      });
+      setTimeout(() => setRefreshMessage(null), 4000);
       await Promise.all([
         loadMarketData(activeWatchlistId),
         loadChangesData(activeWatchlistId),
@@ -261,15 +286,96 @@ function App() {
     }
   };
 
-  const handleRefresh = async () => {
+  // Action: Ingest next sequential market observation session from NSE provider
+  const handleRefreshMarketData = async () => {
     if (!activeWatchlistId) return;
-    await Promise.all([
-      loadMarketData(activeWatchlistId),
-      loadChangesData(activeWatchlistId),
-      loadAttentionData(activeWatchlistId),
-    ]);
+    setRefreshing(true);
+    setError(null);
+    try {
+      const res = await refreshWatchlistMarket(activeWatchlistId);
+      setRefreshMessage({
+        type: res.status === 'up_to_date' ? 'info' : 'success',
+        text: res.message,
+      });
+      setTimeout(() => {
+        setRefreshMessage(null);
+      }, 6000);
+      await Promise.all([
+        loadMarketData(activeWatchlistId),
+        loadChangesData(activeWatchlistId),
+        loadAttentionData(activeWatchlistId),
+      ]);
+    } catch (err) {
+      setError(err.message || 'Failed to refresh market data.');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
+  // Action: Check for changes against current baseline without advancing baseline
+  const handleCheckForChanges = async () => {
+    if (!activeWatchlistId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await Promise.all([
+        loadMarketData(activeWatchlistId),
+        loadChangesData(activeWatchlistId),
+        loadAttentionData(activeWatchlistId),
+      ]);
+    } catch (err) {
+      setError(err.message || 'Failed to evaluate changes.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Action: Review single detected change
+  const handleReviewChange = async (changeId) => {
+    if (!activeWatchlistId) return;
+    try {
+      await reviewChange(activeWatchlistId, changeId);
+      await Promise.all([
+        loadAttentionData(activeWatchlistId),
+        loadChangesData(activeWatchlistId),
+      ]);
+    } catch (err) {
+      setError(err.message || 'Failed to review change.');
+    }
+  };
+
+  // Action: Review all changes for an instrument
+  const handleReviewInstrument = async (instrumentId) => {
+    if (!activeWatchlistId) return;
+    try {
+      await reviewInstrumentChanges(activeWatchlistId, instrumentId);
+      await Promise.all([
+        loadAttentionData(activeWatchlistId),
+        loadChangesData(activeWatchlistId),
+      ]);
+    } catch (err) {
+      setError(err.message || 'Failed to review instrument changes.');
+    }
+  };
+
+  // Action: Review all changes in the watchlist
+  const handleReviewAll = async () => {
+    if (!activeWatchlistId) return;
+    try {
+      await reviewAllWatchlistChanges(activeWatchlistId);
+      setRefreshMessage({
+        type: 'info',
+        text: 'All surfaced changes marked as reviewed.',
+      });
+      setTimeout(() => setRefreshMessage(null), 3000);
+      await Promise.all([
+        loadAttentionData(activeWatchlistId),
+        loadChangesData(activeWatchlistId),
+      ]);
+    } catch (err) {
+      setError(err.message || 'Failed to review all changes.');
+    }
+  };
 
   const activeWatchlist = watchlists.find((w) => w.id === activeWatchlistId);
 
@@ -337,19 +443,30 @@ function App() {
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  className="btn btn-check"
-                  onClick={handleCheckWatchlist}
-                  disabled={checking}
+                  className="btn btn-secondary"
+                  onClick={handleRefreshMarketData}
+                  disabled={refreshing}
+                  title="Ingest next chronological market observation session from NSE provider"
                 >
-                  {checking ? 'Checking...' : '✓ Mark as Checked'}
+                  {refreshing ? '🔄 Ingesting...' : '🔄 Refresh Market Data'}
                 </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={handleRefresh}
+                  onClick={handleCheckForChanges}
                   disabled={loading}
+                  title="Detect changes and evaluate attention against your last checked baseline"
                 >
-                  {loading ? 'Refreshing...' : 'Refresh Market Data'}
+                  {loading ? '🔍 Evaluating...' : '🔍 Check for Changes'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-check"
+                  onClick={handleCheckWatchlist}
+                  disabled={checking}
+                  title="Acknowledge current market snapshot and advance baseline"
+                >
+                  {checking ? 'Updating...' : '✓ Mark as Checked'}
                 </button>
                 <button
                   type="button"
@@ -360,6 +477,13 @@ function App() {
                 </button>
               </div>
             </div>
+
+            {/* Refresh / Status Alert Banner */}
+            {refreshMessage && (
+              <div className={`alert alert-${refreshMessage.type}`} role="status">
+                {refreshMessage.text}
+              </div>
+            )}
 
             {/* Last Checked Persisted State Banner */}
             <div className="last-checked-banner">
@@ -415,34 +539,67 @@ function App() {
               {/* Attention Summary Bar */}
               {attentionData?.summary && (
                 <div className="attention-summary-bar">
-                  <div>
-                    <strong>{attentionData.summary.instruments_with_meaningful_changes}</strong> of{' '}
+                  <div className="attention-summary-bar__main">
+                    <strong>{attentionData.summary.attention_count ?? attentionData.summary.instruments_with_meaningful_changes}</strong> of{' '}
                     <strong>{attentionData.summary.total_instruments}</strong> stocks deserve your attention based on market evidence.
+                    {attentionData.summary.unreviewed_count > 0 ? (
+                      <span className="unreviewed-tag">
+                        ({attentionData.summary.unreviewed_count} unreviewed)
+                      </span>
+                    ) : (attentionData.summary.attention_count > 0) ? (
+                      <span className="all-reviewed-tag">
+                        (✓ All reviewed)
+                      </span>
+                    ) : null}
                   </div>
-                  {attentionData.summary.instruments_without_meaningful_changes > 0 && (
-                    <span style={{ color: 'var(--color-text-muted)' }}>
-                      {attentionData.summary.instruments_without_meaningful_changes} {attentionData.summary.instruments_without_meaningful_changes === 1 ? 'stock had' : 'stocks had'} no meaningful changes
-                    </span>
-                  )}
+                  <div className="attention-summary-bar__sub">
+                    {(attentionData.summary.no_meaningful_change_count ?? attentionData.summary.instruments_without_meaningful_changes) > 0 && (
+                      <span className="summary-quiet-text">
+                        {attentionData.summary.no_meaningful_change_count ?? attentionData.summary.instruments_without_meaningful_changes}{' '}
+                        {(attentionData.summary.no_meaningful_change_count ?? attentionData.summary.instruments_without_meaningful_changes) === 1 ? 'stock quiet' : 'stocks quiet'} (&lt; 0.20)
+                      </span>
+                    )}
+                    {(attentionData.summary.insufficient_data_count ?? 0) > 0 && (
+                      <span className="summary-insufficient-text">
+                        ⚠️ {attentionData.summary.insufficient_data_count} {attentionData.summary.insufficient_data_count === 1 ? 'stock lacks' : 'stocks lack'} baseline or data
+                      </span>
+                    )}
+                    {attentionData.summary.unreviewed_count > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-review-all"
+                        onClick={handleReviewAll}
+                        title="Mark all surfaced changes across this watchlist as reviewed"
+                      >
+                        ✓ Mark all as reviewed
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
               {/* Attention Items Grid */}
-              {attentionData?.attention_items && attentionData.attention_items.length > 0 ? (
+              {((attentionData?.items && attentionData.items.length > 0) || (attentionData?.attention_items && attentionData.attention_items.length > 0)) ? (
                 <div className="attention-feed-grid">
-                  {attentionData.attention_items.map((item) => {
+                  {(attentionData.items || attentionData.attention_items).map((item) => {
                     const meta = getAttentionLevelMeta(item.significance_level);
-                    const pct = item.evidence?.price?.percentage_change !== undefined && item.evidence.price.percentage_change !== null
-                      ? Number(item.evidence.price.percentage_change)
-                      : null;
-                    const abs = item.evidence?.price?.absolute_change !== undefined && item.evidence.price.absolute_change !== null
-                      ? Number(item.evidence.price.absolute_change)
-                      : null;
+                    const evidenceMeta = getEvidenceCompletenessMeta(item.evidence_completeness);
+                    const pct = item.percentage_change !== undefined && item.percentage_change !== null
+                      ? Number(item.percentage_change)
+                      : (item.evidence?.price?.percentage_change !== undefined && item.evidence.price.percentage_change !== null
+                        ? Number(item.evidence.price.percentage_change)
+                        : null);
+                    const abs = item.absolute_change !== undefined && item.absolute_change !== null
+                      ? Number(item.absolute_change)
+                      : (item.evidence?.price?.absolute_change !== undefined && item.evidence.price.absolute_change !== null
+                        ? Number(item.evidence.price.absolute_change)
+                        : null);
                     const isUp = pct !== null ? pct > 0 : false;
                     const isDown = pct !== null ? pct < 0 : false;
+                    const structured = item.structured_explanation;
 
                     return (
-                      <div key={item.instrument_id} className={`attention-card ${meta.cardClass}`}>
+                      <div key={item.instrument_id || item.instrument?.id} className={`attention-card ${meta.cardClass}`}>
                         <div className="attention-card__top">
                           <div>
                             <div className="attention-card__symbol">{item.symbol}</div>
@@ -450,114 +607,163 @@ function App() {
                           </div>
                           <div className="attention-card__badges">
                             <span className={`attention-badge ${meta.badgeClass}`}>{meta.label}</span>
+                            {evidenceMeta && (
+                              <span
+                                className={`evidence-badge ${evidenceMeta.badgeClass}`}
+                                title={evidenceMeta.summary}
+                              >
+                                {evidenceMeta.label}
+                              </span>
+                            )}
                             <span className="attention-score-chip" title="Overall Significance Score (0.0 to 1.0)">
                               Score: {Number(item.overall_score).toFixed(2)}
                             </span>
+                            {item.is_reviewed ? (
+                              <span
+                                className="review-status-badge review-status-badge--reviewed"
+                                title={item.reviewed_at ? `Reviewed on ${formatDateTime(item.reviewed_at)}` : 'Reviewed'}
+                              >
+                                ✓ Reviewed
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="btn btn-review-sm"
+                                onClick={() => handleReviewInstrument(item.instrument_id || item.instrument?.id)}
+                                title="Mark changes for this stock as reviewed"
+                              >
+                                Mark as reviewed
+                              </button>
+                            )}
                           </div>
                         </div>
 
-                        {/* Plain-Language Non-Causal Explanation */}
-                        <div className="attention-explanation">
-                          {item.explanation}
-                        </div>
-
-                        {/* Evidence Breakdown Grid */}
-                        <div className="attention-evidence-grid">
-                          {pct !== null && (
-                            <div className="evidence-item">
-                              <span className="evidence-label">Observed Movement</span>
-                              <span className={`evidence-value ${isUp ? 'val-positive' : isDown ? 'val-negative' : 'val-neutral'}`}>
-                                {isUp ? '+' : ''}{pct.toFixed(2)}% {abs !== null ? `(${isUp ? '+' : ''}₹${abs.toFixed(2)})` : ''}
-                              </span>
-                              <span className="evidence-sub">
-                                ₹{Number(item.baseline_price).toFixed(2)} → ₹{Number(item.current_price).toFixed(2)}
-                              </span>
-                            </div>
-                          )}
-
-                          {item.component_scores.abnormality !== null ? (
-                            <div className="evidence-item">
-                              <span className="evidence-label">Statistical Abnormality</span>
-                              <span className="evidence-value" style={{ color: '#d2a8ff' }}>
-                                z = {item.evidence?.abnormality?.z_score !== undefined
-                                  ? (item.evidence.abnormality.z_score > 0 ? '+' : '') + Number(item.evidence.abnormality.z_score).toFixed(2)
-                                  : '—'}
-                              </span>
-                              <span className="evidence-sub">
-                                Score: {Number(item.component_scores.abnormality).toFixed(2)} (N={item.evidence?.abnormality?.sample_size || '—'})
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="evidence-item">
-                              <span className="evidence-label">Statistical Abnormality</span>
-                              <span className="evidence-value val-neutral">Insufficient History</span>
-                              <span className="evidence-sub">Excluded from score</span>
-                            </div>
-                          )}
-
-                          {item.component_scores.relative_performance !== null ? (
-                            <div className="evidence-item">
-                              <span className="evidence-label">Relative Performance</span>
-                              <span className="evidence-value" style={{ color: '#38bdf8' }}>
-                                {item.evidence?.relative_performance?.excess_return !== undefined
-                                  ? (item.evidence.relative_performance.excess_return > 0 ? '+' : '') + (Number(item.evidence.relative_performance.excess_return) * 100).toFixed(2) + '%'
-                                  : '—'}
-                              </span>
-                              <span className="evidence-sub">
-                                vs {item.evidence?.relative_performance?.benchmark_symbol || 'NIFTY 50'}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="evidence-item">
-                              <span className="evidence-label">Relative Performance</span>
-                              <span className="evidence-value val-neutral">Benchmark Unavailable</span>
-                              <span className="evidence-sub">Excluded from score</span>
-                            </div>
-                          )}
-
-                          {item.component_scores.volume !== null ? (
-                            <div className="evidence-item">
-                              <span className="evidence-label">Trading Volume</span>
-                              <span className="evidence-value" style={{ color: '#e3b341' }}>
-                                {item.evidence?.volume?.volume_ratio !== undefined
-                                  ? Number(item.evidence.volume.volume_ratio).toFixed(1) + '×'
-                                  : '—'}
-                              </span>
-                              <span className="evidence-sub">vs recent median volume</span>
-                            </div>
-                          ) : (
-                            <div className="evidence-item">
-                              <span className="evidence-label">Trading Volume</span>
-                              <span className="evidence-value val-neutral">Normal Volume</span>
-                              <span className="evidence-sub">Within variance range</span>
+                        {/* Structured Explanation: What Happened & Why it Stands Out */}
+                        <div className="attention-narrative">
+                          <div className="attention-what-happened">
+                            {structured?.what_happened || item.explanation}
+                          </div>
+                          {structured?.why_it_stands_out && (
+                            <div className="attention-why-stands-out">
+                              {structured.why_it_stands_out}
                             </div>
                           )}
                         </div>
 
-                        {/* Evaluated Signal Breakdown */}
-                        <div className="component-scores-row">
-                          <span style={{ fontWeight: '500' }}>Evaluated signals:</span>
-                          <span className="component-score-tag">
-                            Magnitude: {item.component_scores.magnitude !== null ? Number(item.component_scores.magnitude).toFixed(2) : 'N/A'} (w=0.25)
-                          </span>
-                          <span className="component-score-tag">
-                            Abnormality: {item.component_scores.abnormality !== null ? Number(item.component_scores.abnormality).toFixed(2) : 'N/A'} (w=0.25)
-                          </span>
-                          <span className="component-score-tag">
-                            Relative: {item.component_scores.relative_performance !== null ? Number(item.component_scores.relative_performance).toFixed(2) : 'N/A'} (w=0.20)
-                          </span>
-                          <span className="component-score-tag">
-                            Volume: {item.component_scores.volume !== null ? Number(item.component_scores.volume).toFixed(2) : 'N/A'} (w=0.15)
-                          </span>
-                          <span className="component-score-tag">
-                            Event: {item.component_scores.event !== null ? Number(item.component_scores.event).toFixed(2) : '0.00'} (w=0.15)
-                          </span>
-                        </div>
+                        {/* Supporting Evidence Bullets */}
+                        {structured?.supporting_evidence && structured.supporting_evidence.length > 0 && (
+                          <div className="attention-evidence-block">
+                            <div className="attention-evidence-block__title">Corroborating Evidence:</div>
+                            <ul className="attention-evidence-list">
+                              {structured.supporting_evidence.map((bullet, idx) => (
+                                <li key={idx} className="attention-evidence-bullet">
+                                  {bullet}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
 
-                        {/* Card Footer: Timestamps & Freshness */}
+                        {/* Missing Data Disclosures */}
+                        {structured?.missing_data_notes && structured.missing_data_notes.length > 0 && (
+                          <div className="attention-missing-notes">
+                            {structured.missing_data_notes.map((note, idx) => (
+                              <span key={idx} className="missing-note-pill">
+                                ℹ {note}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Collapsible Details & Provenance Accordion */}
+                        <details className="attention-details">
+                          <summary className="attention-details__summary">
+                            <span>Why did this surface? / Details &amp; Provenance</span>
+                          </summary>
+                          <div className="attention-details__content">
+                            {/* Baseline vs Current */}
+                            <div className="details-metrics-row">
+                              <div className="details-metric">
+                                <span className="details-metric__label">Baseline Observation</span>
+                                <span className="details-metric__val">₹{Number(item.baseline_price).toFixed(2)}</span>
+                                <span className="details-metric__sub">{formatDateTime(item.baseline_timestamp || item.baseline_observed_at)}</span>
+                              </div>
+                              <div className="details-metric-arrow">→</div>
+                              <div className="details-metric">
+                                <span className="details-metric__label">Current Observation</span>
+                                <span className="details-metric__val">₹{Number(item.current_price).toFixed(2)}</span>
+                                <span className="details-metric__sub">{formatDateTime(item.current_timestamp || item.current_observed_at)}</span>
+                              </div>
+                              <div className="details-metric">
+                                <span className="details-metric__label">Net Change</span>
+                                <span className={`details-metric__val ${isUp ? 'val-positive' : isDown ? 'val-negative' : 'val-neutral'}`}>
+                                  {pct !== null ? `${isUp ? '+' : ''}${pct.toFixed(2)}%` : '—'}
+                                  {abs !== null ? ` (${isUp ? '+' : ''}₹${abs.toFixed(2)})` : ''}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Component Score Contributions */}
+                            <div className="component-scores-row">
+                              <span style={{ fontWeight: '600', color: 'var(--color-text-primary)' }}>Component Scores:</span>
+                              <span className="component-score-tag">
+                                Magnitude: {item.component_scores?.magnitude !== null && item.component_scores?.magnitude !== undefined ? Number(item.component_scores.magnitude).toFixed(2) : 'N/A'} (w=35%)
+                              </span>
+                              <span className="component-score-tag">
+                                Abnormality: {item.component_scores?.abnormality !== null && item.component_scores?.abnormality !== undefined ? Number(item.component_scores.abnormality).toFixed(2) : 'N/A'} (w=30%)
+                              </span>
+                              <span className="component-score-tag">
+                                Relative: {item.component_scores?.relative_performance !== null && item.component_scores?.relative_performance !== undefined ? Number(item.component_scores.relative_performance).toFixed(2) : 'N/A'} (w=20%)
+                              </span>
+                              <span className="component-score-tag">
+                                Volume: {item.component_scores?.volume !== null && item.component_scores?.volume !== undefined ? Number(item.component_scores.volume).toFixed(2) : 'N/A'} (w=15%)
+                              </span>
+                              <span className="component-score-tag">
+                                Event: {item.component_scores?.event !== null && item.component_scores?.event !== undefined ? Number(item.component_scores.event).toFixed(2) : '0.00'} (w=10%)
+                              </span>
+                            </div>
+
+                            {/* Underlying Candidate Changes with Individual Review */}
+                            {item.changes && item.changes.length > 0 && (
+                              <div className="details-changes-block">
+                                <div style={{ fontWeight: '600', fontSize: '0.75rem', color: 'var(--color-text-primary)' }}>
+                                  Underlying Signals Grouped in Episode:
+                                </div>
+                                <div className="details-changes-grid">
+                                  {item.changes.map((ch) => (
+                                    <div key={ch.id} className="underlying-change-row">
+                                      <span className="constituent-tag">{ch.change_type}</span>
+                                      <span className="underlying-change-status">
+                                        {ch.review_status === 'reviewed' ? (
+                                          <span className="val-positive" style={{ fontSize: '0.7rem', fontWeight: '600' }}>✓ Reviewed</span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="btn btn-review-xs"
+                                            onClick={() => handleReviewChange(ch.id)}
+                                            title="Mark this signal as reviewed"
+                                          >
+                                            Review
+                                          </button>
+                                        )}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Freshness & Provenance */}
+                            <div className="details-freshness">
+                              {item.freshness_note || `Based on ${item.source || 'NSE'} market data through ${formatDateTime(item.current_timestamp || item.current_observed_at)}.`}
+                            </div>
+                          </div>
+                        </details>
+
+                        {/* Card Footer */}
                         <div className="attention-card__footer">
                           <div>
-                            Observed from {formatDateTime(item.baseline_observed_at)} to {formatDateTime(item.current_observed_at)}
+                            Tracking period: {formatDateTime(item.baseline_timestamp || item.baseline_observed_at)} to {formatDateTime(item.current_timestamp || item.current_observed_at)}
                           </div>
                           <span className="status-badge status-badge--final">
                             {item.source} • {item.data_status}
@@ -581,14 +787,126 @@ function App() {
                 </div>
               )}
 
+              {/* SECTION: Chronological Change Feed / Timeline View */}
+              {attentionData?.feed_items && attentionData.feed_items.length > 0 && (
+                <div className="timeline-section" aria-label="Chronological changes timeline">
+                  <div className="timeline-header">
+                    <div className="timeline-title">
+                      <span>⏱️</span>
+                      <span>Chronological Change Feed</span>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                      {attentionData.feed_items.length} detected event{attentionData.feed_items.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+
+                  <div className="timeline-list">
+                    {attentionData.feed_items.map((feedItem) => {
+                      const typeMeta = getChangeTypeMeta(feedItem.change_type);
+                      const levelMeta = getAttentionLevelMeta(feedItem.significance_level);
+                      return (
+                        <div key={feedItem.id} className={`timeline-card ${feedItem.is_reviewed ? 'timeline-card--reviewed' : ''}`}>
+                          <div className="timeline-card__time">
+                            {formatDateTime(feedItem.timestamp)}
+                          </div>
+                          <div className="timeline-card__body">
+                            <div className="timeline-card__top">
+                              <div className="timeline-card__stock">
+                                <strong>{feedItem.symbol}</strong>
+                                <span className="timeline-card__company">{feedItem.company_name}</span>
+                              </div>
+                              <div className="timeline-card__badges">
+                                <span className={`change-badge ${typeMeta.badgeClass}`}>{typeMeta.label}</span>
+                                <span className={`attention-badge ${levelMeta.badgeClass}`}>{levelMeta.label}</span>
+                                <span className="attention-score-chip">Score: {Number(feedItem.overall_score).toFixed(2)}</span>
+                                {feedItem.is_reviewed ? (
+                                  <span className="review-status-badge review-status-badge--reviewed">
+                                    ✓ Reviewed
+                                  </span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="btn btn-review-xs"
+                                    onClick={() => handleReviewChange(feedItem.id)}
+                                  >
+                                    Mark reviewed
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="timeline-card__metrics">
+                              {feedItem.metrics_summary}
+                            </div>
+
+                            {feedItem.explanation && (
+                              <div className="timeline-card__explanation">
+                                {feedItem.explanation}
+                              </div>
+                            )}
+
+                            {feedItem.evidence_bullets && feedItem.evidence_bullets.length > 0 && (
+                              <ul className="timeline-card__bullets">
+                                {feedItem.evidence_bullets.map((b, idx) => (
+                                  <li key={idx}>{b}</li>
+                                ))}
+                              </ul>
+                            )}
+
+                            <div className="timeline-card__footer">
+                              <span>Tracking: {formatDateTime(feedItem.baseline_observed_at)} → {formatDateTime(feedItem.current_observed_at)}</span>
+                              <span>{feedItem.source} • {feedItem.data_status}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Quiet disclosure: Stocks evaluated without meaningful changes */}
-              {attentionData?.summary?.instruments_without_meaningful_changes > 0 && (
+              {((attentionData?.summary?.no_meaningful_change_count ?? attentionData?.summary?.instruments_without_meaningful_changes) > 0) && (
                 <details className="quiet-panel">
                   <summary>
-                    Quiet stocks ({attentionData.summary.instruments_without_meaningful_changes} stocks had no meaningful changes)
+                    Quiet stocks ({attentionData.summary.no_meaningful_change_count ?? attentionData.summary.instruments_without_meaningful_changes} stocks had no meaningful changes)
                   </summary>
-                  <div style={{ marginTop: '8px', lineHeight: '1.5' }}>
-                    These stocks were evaluated against your baseline. Their movements were either nonexistent, negligible, or within normal historical variance and did not meet the attention threshold (Score &lt; 0.20).
+                  <div className="quiet-panel__content">
+                    <p>
+                      These stocks were evaluated against your baseline. Their movements were either nonexistent, negligible, or within normal historical variance and did not meet the attention threshold (Score &lt; 0.20).
+                    </p>
+                    {attentionData.quiet_instruments && attentionData.quiet_instruments.length > 0 && (
+                      <div className="quiet-instruments-tags">
+                        {attentionData.quiet_instruments.map((q) => (
+                          <span key={q.instrument_id} className="quiet-tag" title={q.reason}>
+                            {q.symbol}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </details>
+              )}
+
+              {/* Insufficient Data disclosure */}
+              {(attentionData?.summary?.insufficient_data_count > 0) && (
+                <details className="insufficient-panel">
+                  <summary>
+                    ⚠️ Insufficient data ({attentionData.summary.insufficient_data_count} stocks need baseline or data)
+                  </summary>
+                  <div className="insufficient-panel__content">
+                    <p>
+                      These instruments lack a recorded user observation baseline or sufficient historical data. Click &quot;Mark as Checked&quot; above to establish a baseline for tracking.
+                    </p>
+                    {attentionData.insufficient_data_instruments && attentionData.insufficient_data_instruments.length > 0 && (
+                      <ul className="insufficient-list">
+                        {attentionData.insufficient_data_instruments.map((ins) => (
+                          <li key={ins.instrument_id}>
+                            <strong>{ins.symbol}</strong> ({ins.company_name}): {ins.reason}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 </details>
               )}
@@ -651,7 +969,7 @@ function App() {
                 <input
                   type="text"
                   className="input-text"
-                  placeholder="Search NSE symbol or company name (e.g., TCS, RELIANCE)..."
+                  placeholder="Search 30+ NSE stocks (e.g., TATAMOTORS, BHARTIARTL, ITC, TCS)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   aria-label="Search instruments"
@@ -803,7 +1121,7 @@ function App() {
 
       {/* Footer */}
       <footer className="footer">
-        Smart Market Watchlist &mdash; Milestone 3: Significance Scoring &amp; Attention Ranking &mdash; NSE CM-UDiFF Market Data
+        Smart Market Watchlist &mdash; Milestone 5: Smart Attention + Change Feed &mdash; NSE CM-UDiFF Market Data (Historical EOD)
       </footer>
     </div>
 

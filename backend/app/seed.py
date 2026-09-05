@@ -89,6 +89,28 @@ async def seed_dev_data(session: AsyncSession) -> dict[str, int]:
 
     await session.commit()
 
+    # 3. Populate wider NSE instrument universe from security master
+    try:
+        from app.providers.nse import NSEHistoricalProvider
+        provider = NSEHistoricalProvider()
+        wider_instruments = provider.get_available_instruments()
+        for winst in wider_instruments:
+            sym = winst["nse_symbol"]
+            inst_stmt = select(Instrument).where(Instrument.nse_symbol == sym)
+            inst_res = await session.execute(inst_stmt)
+            if inst_res.scalar_one_or_none() is None:
+                session.add(Instrument(
+                    nse_symbol=sym,
+                    company_name=winst["company_name"],
+                    isin=winst.get("isin"),
+                    exchange="NSE",
+                ))
+                counts["instruments_created"] += 1
+                logger.info("Imported instrument %s (%s)", sym, winst["company_name"])
+        await session.commit()
+    except Exception as e:
+        logger.warning("Could not load wider NSE security master: %s", e)
+
     # Advance sequences past seeded IDs so autoincrement doesn't conflict
     from sqlalchemy import text
     await session.execute(text("SELECT setval(pg_get_serial_sequence('users', 'id'), coalesce((SELECT max(id) FROM users), 1))"))
