@@ -1,5 +1,11 @@
 import asyncio
 import logging
+import os
+import sys
+
+# Ensure backend root is in python path when run directly
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -123,6 +129,40 @@ async def seed_dev_data(session: AsyncSession) -> dict[str, int]:
         await session.commit()
     except Exception as e:
         logger.warning("Could not load wider NSE security master: %s", e)
+
+    # 4. Clean up any transient test/verification artifacts from past test runs
+    from app.models.watchlist import Watchlist, WatchlistItem
+    from app.models.market_observation import MarketObservation
+    from app.models.detected_change import DetectedChange
+    from app.models.user_observation import UserObservation
+    from sqlalchemy import delete
+
+    test_insts = (await session.execute(
+        select(Instrument).where(
+            (Instrument.nse_symbol.like("VERIFY%")) | (Instrument.company_name.like("%Verification%"))
+        )
+    )).scalars().all()
+    test_inst_ids = [ti.id for ti in test_insts]
+
+    test_wls = (await session.execute(
+        select(Watchlist).where(
+            (Watchlist.name.ilike("%verification%")) | (Watchlist.name == "Verification WL")
+        )
+    )).scalars().all()
+    test_wl_ids = [tw.id for tw in test_wls]
+
+    if test_wl_ids or test_inst_ids:
+        await session.execute(delete(WatchlistItem).where(
+            (WatchlistItem.watchlist_id.in_(test_wl_ids)) | (WatchlistItem.instrument_id.in_(test_inst_ids))
+        ))
+        if test_inst_ids:
+            await session.execute(delete(UserObservation).where(UserObservation.instrument_id.in_(test_inst_ids)))
+            await session.execute(delete(DetectedChange).where(DetectedChange.instrument_id.in_(test_inst_ids)))
+            await session.execute(delete(MarketObservation).where(MarketObservation.instrument_id.in_(test_inst_ids)))
+            await session.execute(delete(Instrument).where(Instrument.id.in_(test_inst_ids)))
+        if test_wl_ids:
+            await session.execute(delete(Watchlist).where(Watchlist.id.in_(test_wl_ids)))
+        await session.commit()
 
     # Advance sequences past seeded IDs so autoincrement doesn't conflict
     from sqlalchemy import text

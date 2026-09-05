@@ -971,6 +971,125 @@
   text-align: center;
 }
 
+/* Overall System Architecture Explainer (Overview State) */
+.arch-overview-explainer {
+  margin-top: 2rem;
+  max-width: 860px;
+  width: 100%;
+  background: rgba(14, 20, 34, 0.70);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xl);
+  padding: 1.75rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  animation: archFadeIn 0.35s ease forwards;
+}
+
+.arch-explainer-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.arch-explainer-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--beacon-gold);
+}
+
+.arch-explainer-heading {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #FFFFFF;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.arch-explainer-lead {
+  font-size: 0.90rem;
+  line-height: 1.65;
+  color: var(--color-text-secondary);
+  margin: 0;
+  border-left: 2px solid rgba(245, 158, 11, 0.4);
+  padding-left: 1rem;
+}
+
+.arch-term {
+  color: var(--beacon-gold);
+  font-weight: 600;
+}
+
+.arch-principles-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.arch-principle-card {
+  background: rgba(9, 12, 19, 0.6);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  transition: border-color var(--transition-fast);
+}
+.arch-principle-card:hover {
+  border-color: rgba(245, 158, 11, 0.28);
+}
+
+.arch-principle-card--span {
+  grid-column: 1 / -1;
+  background: rgba(245, 158, 11, 0.03);
+  border-color: rgba(245, 158, 11, 0.25);
+}
+
+.principle-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.principle-layer-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--beacon-gold);
+}
+
+.principle-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #FFFFFF;
+  margin: 0;
+}
+
+.principle-text {
+  font-size: 0.81rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+.principle-text em {
+  color: var(--color-text-secondary);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.arch-code {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--beacon-gold);
+  background: rgba(245, 158, 11, 0.1);
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+}
+
 /* Concise Capabilities Strip beneath Overview Diagram */
 .arch-capabilities-strip {
   margin-top: 1.25rem;
@@ -3343,7 +3462,8 @@
     display: none !important;
   }
   .arch-mermaid-container,
-  .arch-inspector-panel {
+  .arch-inspector-panel,
+  .arch-overview-explainer {
     animation: none !important;
   }
 }

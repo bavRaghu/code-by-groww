@@ -685,6 +685,72 @@ export default function ArchitectureExplorer() {
                 )}
               </div>
 
+              {/* Overall System Architecture Explanation (Overview State Only) */}
+              {!selectedComponent && (
+                <div className="arch-overview-explainer" aria-label="System architecture overview explanation">
+                  <div className="arch-explainer-header">
+                    <span className="arch-explainer-badge">SYSTEM ARCHITECTURE</span>
+                    <h3 className="arch-explainer-heading">How Beacon is Structured</h3>
+                  </div>
+
+                  <p className="arch-explainer-lead">
+                    Beacon separates the system into four concerns: the <strong className="arch-term">React frontend</strong> presents the user&apos;s watchlists, attention feed, and stock detail; the <strong className="arch-term">FastAPI backend</strong> provides the application boundary and coordinates requests; the <strong className="arch-term">intelligence layer</strong> turns raw market observations and supporting context into detected, assessed, and ranked changes; and external <strong className="arch-term">data sources</strong> provide the market and news inputs. <strong className="arch-term">PostgreSQL</strong> provides the durable source of truth for both market data and user state, allowing Beacon to distinguish what changed in the market from what the user has already seen.
+                  </p>
+
+                  <div className="arch-principles-grid">
+                    <div className="arch-principle-card">
+                      <div className="principle-card-head">
+                        <span className="principle-layer-tag">PRESENTATION</span>
+                        <h4 className="principle-name">React Frontend</h4>
+                      </div>
+                      <p className="principle-text">
+                        The presentation layer communicates strictly through the REST API rather than directly owning market-data ingestion or provider state.
+                      </p>
+                    </div>
+
+                    <div className="arch-principle-card">
+                      <div className="principle-card-head">
+                        <span className="principle-layer-tag">APPLICATION BOUNDARY</span>
+                        <h4 className="principle-name">FastAPI Backend</h4>
+                      </div>
+                      <p className="principle-text">
+                        Acts as the application boundary—handling HTTP routing, authentication/authorization, schema validation, and coordinating domain services.
+                      </p>
+                    </div>
+
+                    <div className="arch-principle-card">
+                      <div className="principle-card-head">
+                        <span className="principle-layer-tag">DERIVED INTELLIGENCE</span>
+                        <h4 className="principle-name">Intelligence Subsystem</h4>
+                      </div>
+                      <p className="principle-text">
+                        Deliberately separated from data ingestion: transforms raw observations into candidate changes, assesses multi-factor significance, groups episodes, and ranks attention.
+                      </p>
+                    </div>
+
+                    <div className="arch-principle-card">
+                      <div className="principle-card-head">
+                        <span className="principle-layer-tag">PROVIDER BOUNDARY</span>
+                        <h4 className="principle-name">Data Sources &amp; Ingestion</h4>
+                      </div>
+                      <p className="principle-text">
+                        NSE Bhavcopy and Marketaux remain isolated behind strict provider boundaries so schema formats and vendor idiosyncrasies never leak across the domain.
+                      </p>
+                    </div>
+
+                    <div className="arch-principle-card arch-principle-card--span">
+                      <div className="principle-card-head">
+                        <span className="principle-layer-tag">DURABLE TRUTH</span>
+                        <h4 className="principle-name">PostgreSQL &amp; Observation State</h4>
+                      </div>
+                      <p className="principle-text">
+                        Stores both underlying market observations and personal check-in baselines (<code className="arch-code">user_observations</code>). This architectural separation allows Beacon to answer <em>&ldquo;What changed since I last checked?&rdquo;</em> without treating refreshed market-data snapshots as a replacement for the user&apos;s observation state.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Concise Implemented Capabilities Strip (Overview State Only) */}
               {!selectedComponent && (
                 <div className="arch-capabilities-strip" aria-label="Capabilities powered by this architecture">
