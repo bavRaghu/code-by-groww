@@ -107,4 +107,13 @@ export async function reviewAllWatchlistChanges(watchlistId) {
   return handleResponse(res);
 }
 
+export async function fetchStockDetail(instrumentId, watchlistId = null) {
+  const url = watchlistId
+    ? `${BASE_URL}/api/v1/instruments/${instrumentId}?watchlist_id=${watchlistId}`
+    : `${BASE_URL}/api/v1/instruments/${instrumentId}`;
+  const res = await fetch(url);
+  return handleResponse(res);
+}
+
+
 

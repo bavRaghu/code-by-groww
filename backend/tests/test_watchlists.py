@@ -41,13 +41,12 @@ async def test_watchlist_crud_lifecycle(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_watchlist_items_management(client: AsyncClient):
     # Setup: get instruments
-    inst_res = await client.get("/api/v1/instruments?limit=100")
-    instruments = inst_res.json()
-    inst_map = {inst["nse_symbol"]: inst["id"] for inst in instruments}
-
-    tcs_id = inst_map["TCS"]
-    infy_id = inst_map["INFY"]
-    rel_id = inst_map["RELIANCE"]
+    tcs_res = await client.get("/api/v1/instruments?search=TCS")
+    tcs_id = next(i["id"] for i in tcs_res.json() if i["nse_symbol"] == "TCS")
+    infy_res = await client.get("/api/v1/instruments?search=INFY")
+    infy_id = next(i["id"] for i in infy_res.json() if i["nse_symbol"] == "INFY")
+    rel_res = await client.get("/api/v1/instruments?search=RELIANCE")
+    rel_id = next(i["id"] for i in rel_res.json() if i["nse_symbol"] == "RELIANCE")
 
     # Create watchlist
     create_wl = await client.post("/api/v1/watchlists", json={"name": "Membership Test"})

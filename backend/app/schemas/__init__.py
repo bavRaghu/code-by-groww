@@ -32,6 +32,15 @@ from app.schemas.attention import (
     InstrumentReviewResponse,
     WatchlistReviewAllResponse,
 )
+from app.schemas.stock_detail import (
+    CurrentObservationDetail,
+    SinceLastCheckedDetail,
+    MarketContextDetail,
+    EvidenceDetail,
+    TimelineEpisode,
+    HistoricalSeriesPoint,
+    StockDetailResponse,
+)
 
 __all__ = [
     "InstrumentBase",
@@ -64,6 +73,13 @@ __all__ = [
     "ChangeReviewResponse",
     "InstrumentReviewResponse",
     "WatchlistReviewAllResponse",
+    "CurrentObservationDetail",
+    "SinceLastCheckedDetail",
+    "MarketContextDetail",
+    "EvidenceDetail",
+    "TimelineEpisode",
+    "HistoricalSeriesPoint",
+    "StockDetailResponse",
 ]
 
 
