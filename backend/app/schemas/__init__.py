@@ -41,6 +41,7 @@ from app.schemas.stock_detail import (
     HistoricalSeriesPoint,
     StockDetailResponse,
 )
+from app.schemas.news import RelevantNewsItem, RelevantNewsContext
 
 __all__ = [
     "InstrumentBase",
@@ -80,6 +81,8 @@ __all__ = [
     "TimelineEpisode",
     "HistoricalSeriesPoint",
     "StockDetailResponse",
+    "RelevantNewsItem",
+    "RelevantNewsContext",
 ]
 
 

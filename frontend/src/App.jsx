@@ -770,6 +770,61 @@ function StockDetailView({ instrumentId, watchlistId, onBack, onReview }) {
         </div>
       </div>
 
+      {/* Card: Supporting News Context (Marketaux) */}
+      <div className="stock-detail-card news-card">
+        <div className="stock-detail-card__header">
+          <div className="stock-detail-card__title">
+            <span>📰</span>
+            <span>Supporting News Context</span>
+          </div>
+          <span className="status-badge status-badge--final">Marketaux News</span>
+        </div>
+
+        <div className="stock-detail-card__body">
+          <div className="news-disclaimer">
+            ℹ <strong>Context only:</strong> External news published around this observation window. News context does not imply causality or investment advice.
+          </div>
+
+          {detail.relevant_news?.articles && detail.relevant_news.articles.length > 0 ? (
+            <div className="news-articles-list">
+              {detail.relevant_news.articles.map((art, idx) => (
+                <div key={art.id || art.provider_article_id || idx} className="news-article-item">
+                  <div className="news-article-item__main">
+                    <a
+                      href={art.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="news-article-title"
+                      title="Open original article in new tab"
+                    >
+                      {art.headline} ↗
+                    </a>
+                    {art.summary && (
+                      <div className="news-article-summary">{art.summary}</div>
+                    )}
+                    <div className="news-article-meta">
+                      <span className="news-source">{art.source}</span>
+                      <span>•</span>
+                      <span className="news-time">{formatDateTime(art.published_at)}</span>
+                      {art.relevance_summary && (
+                        <>
+                          <span>•</span>
+                          <span className="news-rel-pill">{art.relevance_summary}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="news-empty-state">
+              {detail.relevant_news?.note || 'No relevant news found around this change.'}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Card: Price & Volume Chart */}
       <div className="stock-detail-card chart-card">
         <div className="stock-detail-card__header">
@@ -1506,6 +1561,35 @@ function App() {
                           </div>
                         )}
 
+                        {/* Supporting News Context Block (Marketaux) */}
+                        {item.relevant_news?.articles && item.relevant_news.articles.length > 0 && (
+                          <div className="attention-news-block">
+                            <div className="attention-news-block__title">
+                              <span>📰 Potentially relevant news around this move:</span>
+                            </div>
+                            <div className="attention-news-list">
+                              {item.relevant_news.articles.map((art, aIdx) => (
+                                <div key={aIdx} className="attention-news-item">
+                                  <a
+                                    href={art.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="attention-news-title"
+                                    title="Open original article in new tab"
+                                  >
+                                    {art.headline} ↗
+                                  </a>
+                                  <div className="attention-news-meta">
+                                    <span>{art.source}</span>
+                                    <span>•</span>
+                                    <span>{formatDateTime(art.published_at)}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Collapsible Details & Provenance Accordion */}
                         <details className="attention-details">
                           <summary className="attention-details__summary">
@@ -1986,7 +2070,7 @@ function App() {
 
       {/* Footer */}
       <footer className="footer">
-        Smart Market Watchlist &mdash; Milestone 6: Stock Detail + Change Timeline + Evidence &mdash; NSE CM-UDiFF Market Data (Historical EOD)
+        Smart Market Watchlist &mdash; Milestone 7: Marketaux News Integration &mdash; NSE CM-UDiFF Market Data (Historical EOD)
       </footer>
     </div>
 

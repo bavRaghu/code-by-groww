@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from app.models.market_observation import MarketObservation
     from app.models.user_observation import UserObservation
     from app.models.detected_change import DetectedChange
+    from app.models.news_article import NewsArticle
 
 
 class Instrument(Base):
@@ -51,6 +52,11 @@ class Instrument(Base):
     )
     detected_changes: Mapped[list["DetectedChange"]] = relationship(
         "DetectedChange",
+        back_populates="instrument",
+        cascade="all, delete-orphan",
+    )
+    news_articles: Mapped[list["NewsArticle"]] = relationship(
+        "NewsArticle",
         back_populates="instrument",
         cascade="all, delete-orphan",
     )

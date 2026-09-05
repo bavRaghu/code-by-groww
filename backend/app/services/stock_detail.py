@@ -27,6 +27,7 @@ from app.services.significance_scoring import (
     format_freshness_note,
     generate_structured_explanation,
 )
+from app.services.news import get_or_fetch_relevant_news
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +357,19 @@ async def get_stock_detail(
         current_observed_at=latest_obs.observed_at if latest_obs else None,
     )
 
+    # 9. Supporting news context
+    news_context = None
+    if latest_obs:
+        try:
+            news_context = await get_or_fetch_relevant_news(
+                db=db,
+                instrument=instrument,
+                change_time=latest_obs.observed_at,
+                baseline_time=since_last_checked.baseline_observed_at if since_last_checked.has_baseline else None,
+            )
+        except Exception as n_err:
+            logger.warning("Failed to retrieve supporting news for %s: %s", instrument.nse_symbol, n_err)
+
     return StockDetailResponse(
         id=instrument.id,
         nse_symbol=instrument.nse_symbol,
@@ -372,4 +386,5 @@ async def get_stock_detail(
         freshness_note=freshness_str,
         source=latest_obs.source if latest_obs else "NSE",
         data_status=latest_obs.data_status if latest_obs else "HISTORICAL",
+        relevant_news=news_context,
     )

@@ -238,8 +238,76 @@ All 20 tests verify:
 
 ---
 
-## 6. Known Limitations
+## 6. Marketaux News Integration (Milestone 7)
 
-- **Historical / End-of-Day Data Only**: This milestone consumes NSE Common Bhavcopy Final end-of-day market data files rather than live streaming ticks or WebSockets.
-- **Development Authentication**: The application currently operates with a single deterministic development user (`id=1`). Production multi-tenant authentication is intentionally deferred to future milestones per specification.
-- **Change Detection**: The intelligent change-detection scoring engine and "since last checked" attention filtering are planned for subsequent milestones.
+Marketaux is integrated as an **isolated supporting context layer** for detected market changes. It is **not** a generic news feed, **not** an investment advisor, and **never** influences or replaces the quantitative significance scoring pipeline.
+
+### Architectural Principles
+
+```
+MarketObservation
+      ↓
+DetectedChange
+      ↓
+SignificanceAssessment (Pure Quantitative Scoring)
+      ↓
+Attention Feed / Stock Detail
+      ↓
+Supporting News Context (MarketauxNewsProvider — Supplementary Context Only)
+```
+
+1. **Strict Non-Causal Wording**:
+   The system displays: *"Potentially relevant news around this move"* and explains proximity (*"Published during the observation window"*, *"Published within hours of the detected move"*). It never claims or implies that news "caused" the price movement.
+2. **Relevance Ranking & Limits**:
+   - Ranked deterministically based on entity match (`match_score` from Marketaux), direct ticker symbol / company name presence, publication recency, and temporal proximity to the detected move.
+   - Temporal window: Constrained to news published within 72 hours before the change up to 24 hours after the change.
+   - Capped at a maximum of **3** qualifying articles.
+   - When no qualifying articles exist, displays: *"No relevant news found around this change."*
+3. **Resilience & Graceful Degradation**:
+   - News retrieval failures (HTTP 401, 429 rate limit, 5xx server error, network timeout) are caught safely.
+   - Market observations, change detection, significance scoring, and the attention feed operate with 100% reliability regardless of news availability.
+4. **Token Security**:
+   - `MARKETAUX_API_TOKEN` is strictly backend-only.
+   - Never logged (HTTP request logger filters out query params and token strings).
+   - Never exposed in frontend bundles or API responses.
+   - Untrusted third-party article titles and summaries are rendered safely without raw HTML injection.
+5. **Idempotent Persistence**:
+   - Articles are cached in the PostgreSQL `news_articles` table with a composite constraint `UNIQUE(provider, provider_article_id, instrument_id)`.
+   - Repeated queries for the same move query the local database first, minimizing external API calls and rate-limiting.
+
+### Configuration
+
+Add `MARKETAUX_API_TOKEN` to your backend `.env` file or environment variables:
+
+```bash
+# In backend/.env
+MARKETAUX_API_TOKEN=your_api_token_here
+MARKETAUX_BASE_URL=https://api.marketaux.com/v1
+MARKETAUX_TIMEOUT_SECONDS=10.0
+```
+
+*(If `MARKETAUX_API_TOKEN` is unset or empty, the application runs seamlessly in degraded mode, providing full attention and significance intelligence without external news calls).*
+
+---
+
+## 7. Running Tests
+
+Run the complete 103-test suite across all milestones:
+
+```bash
+.\backend\.venv\Scripts\pytest.exe backend/tests -v
+```
+
+Test coverage:
+- `test_milestone7_marketaux_news.py`: Marketaux response normalization, missing token handling, timeout/5xx resilience, 429 rate limit / 401 handling, idempotent persistence, instrument association, relevance ranking (top 3 limit), temporal proximity, fallback state, unchanged significance calculation, and token security.
+- `test_milestone6_stock_detail.py`: Stock detail contract, "since last checked" state, evidence breakdown, change timeline, benchmark context.
+- `test_milestone5_attention_feed.py`: Attention feed summaries, signal episodes, ranking, review state persistence, and audit log.
+- `test_milestone4_market_freshness.py`: Dynamic instrument discovery, bhavcopy ingestion, multi-session baseline progression.
+- Foundation tests (`test_watchlists.py`, `test_user_observation.py`, `test_significance_scoring.py`, `test_ingestion.py`, `test_instruments.py`, `test_seed.py`).
+
+---
+
+## 8. Known Limitations & Follow-ups
+
+- **External Free Tier Quotas**: Marketaux free-tier tokens have daily request limits. The local PostgreSQL news cache and 72-hour windowing mitigate repeated hits, but high-volume watchlists may encounter 429s (handled gracefully by the fallback state).
+- **Historical Backfill**: Real-time bhavcopy files represent historical dates; if historical news beyond the provider's free-tier archive window is queried, Marketaux may return empty results, correctly triggering the *"No relevant news found around this change"* fallback.

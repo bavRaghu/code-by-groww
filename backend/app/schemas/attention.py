@@ -3,6 +3,8 @@ from decimal import Decimal
 from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.news import RelevantNewsContext
+
 
 class InstrumentReference(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -85,6 +87,7 @@ class AttentionItem(BaseModel):
     review_status: str = "surfaced"  # "surfaced" | "reviewed"
     is_reviewed: bool = False
     reviewed_at: datetime | None = None
+    relevant_news: RelevantNewsContext | None = None
 
 
 class ChangeFeedItem(BaseModel):

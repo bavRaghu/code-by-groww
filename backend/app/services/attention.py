@@ -30,6 +30,7 @@ from app.services.significance_scoring import (
     format_freshness_note,
     generate_structured_explanation,
 )
+from app.services.news import get_or_fetch_relevant_news
 
 logger = logging.getLogger(__name__)
 
@@ -290,6 +291,19 @@ async def get_watchlist_attention(
             abs_change_dec = (p_curr_dec - p_base_dec) if (p_base_dec is not None and p_curr_dec is not None) else None
             pct_change_dec = Decimal(str(round(pct_change, 4))) if pct_change is not None else None
 
+            # Fetch supporting news context for meaningful changes (High/Medium/Low)
+            news_context = None
+            if inst and score_result.significance_level != SignificanceLevel.NONE:
+                try:
+                    news_context = await get_or_fetch_relevant_news(
+                        db=db,
+                        instrument=inst,
+                        change_time=curr_obs.observed_at if curr_obs else datetime.now(timezone.utc),
+                        baseline_time=base_obs.observed_at if base_obs else None,
+                    )
+                except Exception as n_err:
+                    logger.warning("Failed to retrieve supporting news for %s: %s", inst.nse_symbol, n_err)
+
             item = AttentionItem(
                 instrument=InstrumentReference(
                     id=inst.id if inst else instrument_id,
@@ -331,6 +345,7 @@ async def get_watchlist_attention(
                 review_status=episode_review_status,
                 is_reviewed=is_reviewed,
                 reviewed_at=latest_reviewed_at,
+                relevant_news=news_context,
             )
             all_items.append(item)
 

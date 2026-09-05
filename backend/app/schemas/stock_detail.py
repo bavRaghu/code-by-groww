@@ -3,6 +3,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.attention import ComponentScores, EvidenceCompleteness, StructuredExplanation
+from app.schemas.news import RelevantNewsContext
 
 
 class CurrentObservationDetail(BaseModel):
@@ -101,3 +102,4 @@ class StockDetailResponse(BaseModel):
     freshness_note: str = ""
     source: str = "NSE"
     data_status: str = "HISTORICAL"
+    relevant_news: RelevantNewsContext | None = None

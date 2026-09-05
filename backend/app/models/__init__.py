@@ -6,6 +6,7 @@ from app.models.user_observation import UserObservation
 from app.models.detected_change import DetectedChange, ChangeType, ReviewStatus
 from app.models.change_review import ChangeReview
 from app.models.significance_assessment import SignificanceAssessment, SignificanceLevel
+from app.models.news_article import NewsArticle
 
 __all__ = [
     "User",
@@ -20,4 +21,5 @@ __all__ = [
     "ChangeReview",
     "SignificanceAssessment",
     "SignificanceLevel",
+    "NewsArticle",
 ]
