@@ -18,6 +18,7 @@ import {
   FileText,
 } from 'lucide-react';
 import FireflyBackground from './FireflyBackground';
+import ArchitectureExplorer from './ArchitectureExplorer';
 
 export default function LandingPage({ onOpenAuth, onDemoLogin, demoLoading, demoError }) {
   const [activeBuiltTab, setActiveBuiltTab] = useState('core'); // 'core' | 'further'
@@ -39,6 +40,7 @@ export default function LandingPage({ onOpenAuth, onDemoLogin, demoLoading, demo
         <nav className="landing-nav__links">
           <a href="#problem" className="nav-link">The Problem</a>
           <a href="#how-we-got-here" className="nav-link">How We Got Here</a>
+          <a href="#architecture" className="nav-link">Architecture</a>
           <a href="#what-we-built" className="nav-link">What We Built</a>
           <a href="#in-action" className="nav-link">See in Action</a>
         </nav>
@@ -100,7 +102,7 @@ export default function LandingPage({ onOpenAuth, onDemoLogin, demoLoading, demo
             <ArrowRight size={16} />
           </button>
           <a
-            href="#what-we-built"
+            href="#architecture"
             className="beacon-btn beacon-btn--secondary hero-btn-demo"
           >
             <span>Explore Architecture</span>
@@ -351,6 +353,9 @@ export default function LandingPage({ onOpenAuth, onDemoLogin, demoLoading, demo
         </div>
       </section>
 
+      {/* Interactive System Architecture Explorer */}
+      <ArchitectureExplorer />
+
       {/* 6. WHAT WE BUILT */}
       <section id="what-we-built" className="landing-built" aria-label="Architecture and engineering features">
         <div className="section-container">
@@ -572,45 +577,6 @@ export default function LandingPage({ onOpenAuth, onDemoLogin, demoLoading, demo
 
               <div className="action-option-note">
                 Strict per-user data isolation • Scrypt password security
-              </div>
-            </div>
-          </div>
-
-          {/* Deterministic Walkthrough Workflow Sequence */}
-          <div className="walkthrough-guide">
-            <div className="walkthrough-header">
-              <span className="walkthrough-title">Deterministic Evaluator Walkthrough</span>
-              <span className="walkthrough-subtitle">Core Product Loop</span>
-            </div>
-
-            <div className="walkthrough-steps">
-              <div className="walkthrough-step">
-                <span className="walkthrough-step__num">01</span>
-                <div className="walkthrough-step__content">
-                  <h4>Observe Baseline</h4>
-                  <p>Check active watchlist snapshot and baseline prices from previous check-in.</p>
-                </div>
-              </div>
-              <div className="walkthrough-step">
-                <span className="walkthrough-step__num">02</span>
-                <div className="walkthrough-step__content">
-                  <h4>Check for Changes</h4>
-                  <p>Run change detection against newly available market observations without advancing state.</p>
-                </div>
-              </div>
-              <div className="walkthrough-step">
-                <span className="walkthrough-step__num">03</span>
-                <div className="walkthrough-step__content">
-                  <h4>Inspect Attention Feed</h4>
-                  <p>Review High and Medium attention cards, multi-factor evidence, and supporting Marketaux news.</p>
-                </div>
-              </div>
-              <div className="walkthrough-step">
-                <span className="walkthrough-step__num">04</span>
-                <div className="walkthrough-step__content">
-                  <h4>Review &amp; Advance</h4>
-                  <p>Mark items as reviewed to update your personal observation baseline for the next cycle.</p>
-                </div>
               </div>
             </div>
           </div>
