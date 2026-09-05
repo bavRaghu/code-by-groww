@@ -233,7 +233,7 @@ All application routes are versioned under `/api/v1`:
 ### Health
 - `GET /api/v1/health`: System health and status check.
 
-## Local Development
+## Startup Instructions
 
 ### Prerequisites
 
