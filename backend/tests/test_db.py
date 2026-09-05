@@ -15,7 +15,7 @@ from app.models.watchlist import Watchlist, WatchlistItem
 @pytest.mark.asyncio
 async def test_user_watchlist_relationship(db_session: AsyncSession):
     # Create user and watchlist
-    user = User()
+    user = User(email="rel_test@example.com", hashed_password="fakehash123")
     db_session.add(user)
     await db_session.commit()
     await db_session.refresh(user)

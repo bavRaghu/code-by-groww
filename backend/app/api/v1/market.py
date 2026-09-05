@@ -4,12 +4,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.market_observation import MarketObservation
+from app.models.user import User
 from app.models.watchlist import Watchlist, WatchlistItem
 from app.schemas.market import MarketRefreshResponse, WatchlistInstrumentMarket, WatchlistMarketResponse
 from app.services.market_refresh import refresh_watchlist_market
-from app.seed import DEV_USER_ID
 
 router = APIRouter(prefix="/watchlists", tags=["market"])
 
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/watchlists", tags=["market"])
 @router.post("/{watchlist_id}/refresh", response_model=MarketRefreshResponse)
 async def refresh_watchlist_market_endpoint(
     watchlist_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> MarketRefreshResponse:
     """
@@ -25,30 +27,27 @@ async def refresh_watchlist_market_endpoint(
     Does NOT modify user observation baselines.
     """
     try:
-        return await refresh_watchlist_market(db, DEV_USER_ID, watchlist_id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        return await refresh_watchlist_market(db, current_user.id, watchlist_id)
+    except (ValueError, PermissionError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
 
 
 @router.get("/{watchlist_id}/market", response_model=WatchlistMarketResponse)
 async def get_watchlist_market(
     watchlist_id: int,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WatchlistMarketResponse:
     # 1. Fetch watchlist with items and instruments
     wl_stmt = (
         select(Watchlist)
         .options(selectinload(Watchlist.items).selectinload(WatchlistItem.instrument))
-        .where(Watchlist.id == watchlist_id)
+        .where(Watchlist.id == watchlist_id, Watchlist.user_id == current_user.id)
     )
     wl_result = await db.execute(wl_stmt)
     watchlist = wl_result.scalar_one_or_none()
     if watchlist is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
-    if watchlist.user_id != DEV_USER_ID:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     # Sort watchlist items according to position
     sorted_items = sorted(watchlist.items, key=lambda x: x.position)

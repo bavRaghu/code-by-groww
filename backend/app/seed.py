@@ -56,15 +56,28 @@ async def seed_dev_data(session: AsyncSession) -> dict[str, int]:
     counts = {"users_created": 0, "instruments_created": 0}
 
     # 1. Deterministic Dev User
+    from app.core.security import hash_password
+
     user_stmt = select(User).where(User.id == DEV_USER_ID)
     user_result = await session.execute(user_stmt)
     dev_user = user_result.scalar_one_or_none()
     if dev_user is None:
-        dev_user = User(id=DEV_USER_ID)
+        dev_user = User(
+            id=DEV_USER_ID,
+            email="dev@example.com",
+            hashed_password=hash_password("password123"),
+            name="Dev User",
+            is_active=True,
+        )
         session.add(dev_user)
         counts["users_created"] += 1
-        logger.info("Created development user with id=%d", DEV_USER_ID)
+        logger.info("Created development user with id=%d (dev@example.com)", DEV_USER_ID)
     else:
+        if not getattr(dev_user, "email", None) or not getattr(dev_user, "hashed_password", None):
+            dev_user.email = "dev@example.com"
+            dev_user.hashed_password = hash_password("password123")
+            dev_user.name = "Dev User"
+            dev_user.is_active = True
         logger.info("Development user id=%d already exists", DEV_USER_ID)
 
     # 2. Instruments

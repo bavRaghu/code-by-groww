@@ -1,214 +1,314 @@
-# Smart Market Watchlist
+# BEACON — Smart Market Watchlist
 
-> **Code, by Groww 2026** – Engineering Challenge Submission (Milestone 1: Core Foundation)
+> **"Know what deserves your attention."**
+> 
+> *Beacon turns your watchlist into an attention filter — surfacing meaningful changes, explaining why they matter, and showing the context around them.*
 
-A market watchlist application designed to help users understand what has meaningfully changed in the stocks they follow since they last checked.
+## Overview
 
----
+Traditional financial watchlists primarily display static snapshots of current prices and arbitrary percentage movements. Users returning to their watchlists are forced to scan rows of raw numbers to determine whether any change is meaningful.
 
-## 1. Project Overview
-
-Traditional market watchlists flood users with every price fluctuation and continuous noise. The **Smart Market Watchlist** serves as an attention filter:
-
-$$\text{Watch} \longrightarrow \text{Leave} \longrightarrow \text{Market changes} \longrightarrow \text{Return} \longrightarrow \text{Understand what changed}$$
-
-This milestone establishes the **core foundation end-to-end**:
-- **User & Watchlist domain models** with relational integrity and uniqueness constraints.
-- **Authoritative instruments catalog** seeded with key NSE equities.
-- **Market Data Provider Abstraction** isolating vendor-specific file formats from core domain logic.
-- **NSE CM-UDiFF Common Bhavcopy Ingestion Engine** supporting local file inputs, validation, and idempotent upserts.
-- **FastAPI REST API** supporting watchlist CRUD, item reordering, instrument search, and market observation retrieval with price change calculations.
-- **React + Vite Frontend** allowing interactive watchlist creation, instrument addition/removal, and market data visualization.
-- **Comprehensive automated test suite** covering DB constraints, migrations, seed idempotency, ingestion validation, and API contracts.
-
----
-
-## 2. Architecture
+**Beacon** serves as an attention filter built around a concrete user lifecycle:
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│              React Frontend (Vite + JS)                 │
-│  - Watchlist management (tabs, create, delete)          │
-│  - Stock search & addition/removal                      │
-│  - Market data table with price & percentage changes    │
-└────────────────────────────┬────────────────────────────┘
-                             │  REST / JSON
-                             ▼
-┌─────────────────────────────────────────────────────────┐
-│                    FastAPI Backend                      │
-│  - /api/v1/health                                       │
-│  - /api/v1/instruments (search & listing)               │
-│  - /api/v1/watchlists (CRUD, membership, reordering)   │
-│  - /api/v1/watchlists/{id}/market (price calculations)  │
-└──────────────┬───────────────────────────┬──────────────┘
-               │                           │
-               ▼                           ▼
-┌──────────────────────────────┐  ┌───────────────────────────────────┐
-│      Persistence Layer       │  │      Market Data Abstraction      │
-│  SQLAlchemy 2.0 (Async)      │  │                                   │
-│  Alembic Migrations          │  │  MarketDataProvider (Interface)   │
-│  PostgreSQL 16               │  │    ├── NSEHistoricalProvider       │
-│  - users                     │  │    │   (CM-UDiFF Common Bhavcopy)  │
-│  - instruments               │  │    └── INDstocksProvider (future)  │
-│  - watchlists                │  └───────────────────────────────────┘
-│  - watchlist_items           │
-│  - market_observations      │
-└──────────────────────────────┘
+Watch -> Leave -> Market changes -> Return -> Understand what changed -> Investigate
 ```
 
----
+The system evaluates changes relative to each user's personalized, historical observation point rather than an arbitrary rolling window. Surfaced changes are evaluated across multiple quantitative evidence dimensions to answer:
 
-## 3. Database Entities
+> "What changed, and how much attention does this change deserve based on the evidence available?"
 
-1. **`User` (`users`)**
-   - `id`: Integer primary key (Deterministic dev user `id=1`).
-   - `created_at`, `updated_at`: UTC timestamps.
-   - Relationship: `1 → N` with `Watchlist` (cascade delete).
+This application is an information and attention-prioritization tool. It is not an automated trading system, stock prediction engine, or investment advisory service.
 
-2. **`Instrument` (`instruments`)**
-   - `id`: Integer primary key.
-   - `nse_symbol`: String, **unique constraint**, indexed.
-   - `company_name`: String, required.
-   - `exchange`: Default `"NSE"`.
-   - `isin`, `bse_code`, `sector`: Nullable metadata (never fabricated).
-   - `created_at`, `updated_at`: UTC timestamps.
+## Key Features
 
-3. **`Watchlist` (`watchlists`)**
-   - `id`: Integer primary key.
-   - `user_id`: Foreign key to `users.id` (cascade delete).
-   - `name`: String(100).
-   - `created_at`, `updated_at`: UTC timestamps.
-   - Relationship: `1 → N` with `WatchlistItem`.
+- Multi-watchlist management: Create, rename, reorder, and delete isolated watchlists.
+- NSE instrument discovery: Search authoritative National Stock Exchange equity instruments by symbol or company name.
+- Market data ingestion: Automated ingestion of standardized NSE CM-UDiFF Common Bhavcopy end-of-day observations with full idempotency.
+- Persistent user observation state: Explicit tracking of each user's last-checked observation point across distinct user sessions.
+- Candidate change detection: Compares the current market state against the user's specific baseline without advancing the baseline prematurely.
+- Multi-component significance scoring: Transparent evaluation combining magnitude, historical abnormality (z-score/percentile), relative performance against benchmark (NIFTY 50), volume surge, and corporate actions.
+- Deterministic attention ranking: Surfaces High, Medium, and Low attention items while filtering out sub-threshold market noise.
+- Non-causal structured explanations: Plain-language, evidence-based descriptions stating what was observed without asserting unproven causality.
+- Stock detail and change timeline: Comprehensive view featuring "since you last checked" delta, component evidence breakdown, chronological change episodes, and historical charts.
+- Relevant Marketaux news context: Bounded supplementary context showing up to 3 temporally relevant news articles for surfaced moves without influencing quantitative scoring.
+- Change review tracking: Audit log allowing users to mark changes as reviewed individually, by instrument, or watchlist-wide.
+- Secure authentication and authorization: Scrypt password hashing, stateless HS256 JWT tokens, and strict per-user database query scoping preventing cross-user access.
 
-4. **`WatchlistItem` (`watchlist_items`)**
-   - `id`: Integer primary key.
-   - `watchlist_id`: Foreign key to `watchlists.id` (cascade delete).
-   - `instrument_id`: Foreign key to `instruments.id` (cascade delete).
-   - `position`: Integer (order sequence within watchlist).
-   - `added_at`: UTC timestamp.
-   - Constraint: `UNIQUE(watchlist_id, instrument_id)` ensures no duplicates.
+## Architecture
 
-5. **`MarketObservation` (`market_observations`)**
-   - `id`: Integer primary key.
-   - `instrument_id`: Foreign key to `instruments.id` (cascade delete).
-   - `price`: Decimal/Numeric(14, 4), required.
-   - `open`, `high`, `low`, `close`: Decimal/Numeric(14, 4), nullable.
-   - `volume`: BigInteger, nullable.
-   - `observed_at`: Timezone-aware UTC timestamp.
-   - `received_at`: Timezone-aware UTC timestamp.
-   - `source`: String(50), e.g. `"NSE"`.
-   - `data_status`: String(20), e.g. `"final"`.
-   - Indexes & Constraints:
-     - Composite index `(instrument_id, observed_at)`.
-     - Unique constraint `UNIQUE(instrument_id, observed_at, source)` ensures persistence is completely idempotent.
+The system follows a strict layered architecture that decouples external raw vendor data, derived analytical intelligence, and user-specific state:
 
----
+```mermaid
+flowchart TD
+    subgraph ExternalSources["External Data Sources"]
+        NSE["NSE CM-UDiFF Bhavcopy"]
+        MarketauxAPI["Marketaux News API"]
+    end
 
-## 4. Market Data Architecture & Provider Boundary
+    subgraph ProviderLayer["Provider Abstraction Layer"]
+        NSEProvider["NSEHistoricalProvider"]
+        NewsProvider["MarketauxNewsProvider"]
+    end
 
-Market data ingestion is strictly isolated behind the `MarketDataProvider` abstract base class:
+    subgraph NormalizedPersistence["Normalized Persistent Data"]
+        Instruments["instruments"]
+        Observations["market_observations"]
+        News["news_articles"]
+    end
 
-```python
-class MarketDataProvider(ABC):
-    @abstractmethod
-    def parse_file(self, file_path: str | Path, date_override: datetime | None = None) -> ParseResult:
-        ...
+    subgraph IntelligenceLayer["Derived Intelligence Layer"]
+        ChangeDetection["Change Detection Engine"]
+        Significance["Significance Scoring Engine"]
+        AttentionFilter["Attention Prioritization"]
+    end
+
+    subgraph UserState["User State Layer"]
+        Users["users"]
+        Watchlists["watchlists & items"]
+        UserObs["user_observations (Baseline)"]
+        Reviews["change_reviews"]
+    end
+
+    subgraph APILayer["FastAPI Backend (Port 8000)"]
+        AuthRouter["/api/v1/auth"]
+        WatchlistsRouter["/api/v1/watchlists"]
+        InstrumentsRouter["/api/v1/instruments"]
+        MarketRouter["/api/v1/market"]
+    end
+
+    subgraph ClientLayer["React Frontend (Port 5173)"]
+        UI["Vite + React SPA"]
+    end
+
+    NSE --> NSEProvider
+    MarketauxAPI --> NewsProvider
+    NSEProvider --> Observations
+    NSEProvider --> Instruments
+    NewsProvider --> News
+
+    Observations --> ChangeDetection
+    UserObs --> ChangeDetection
+    ChangeDetection --> Significance
+    Significance --> AttentionFilter
+
+    AttentionFilter --> WatchlistsRouter
+    Watchlists --> WatchlistsRouter
+    Reviews --> WatchlistsRouter
+    Users --> AuthRouter
+    Instruments --> InstrumentsRouter
+    Observations --> MarketRouter
+
+    AuthRouter --> UI
+    WatchlistsRouter --> UI
+    InstrumentsRouter --> UI
+    MarketRouter --> UI
 ```
 
-- **`NSEHistoricalProvider`**:
-  - Ingests the current NSE **CM-UDiFF (Capital Market Unified Distributable File Format) Common Bhavcopy Final** CSV format.
-  - Required columns parsed: `TckrSymb`, `SctySrs`, `TradDt`, `OpnPric`, `HghPric`, `LwPric`, `ClsPric`, `LastPric`, `TtlTradgVol`, `Src`.
-  - Normalizes external columns into internal `NormalizedObservation` representations.
-  - NSE-specific column names and quirks remain strictly inside the provider package.
-- **Future-Proof**:
-  - Future providers (e.g. `INDstocksProvider`, Twelve Data) implement `MarketDataProvider` without touching the application or database layer.
+### Distinction of Architectural Layers
 
----
+1. Raw Data: Historical observations, traded volume, and news articles ingested via vendor-neutral providers.
+2. Derived Intelligence: Candidate changes and significance assessment calculations computed deterministically from market observations.
+3. User State: Personalized watchlist membership, baseline observation records (`user_observations`), and acknowledged change reviews (`change_reviews`).
+4. API Layer: FastAPI REST interface handling authentication, parameter validation, and authorization boundaries.
+5. Frontend: React single-page application built with Vite.
 
-## 5. Local Setup & Commands
+### Core Technology Stack
+
+- Frontend: React 18, Vite, Plain CSS
+- Backend: Python 3.12, FastAPI, Pydantic v2
+- Database: PostgreSQL 16
+- Persistence & Migrations: SQLAlchemy 2.0 (asyncpg), Alembic
+- External Providers: NSE CM-UDiFF Bhavcopy, Marketaux REST API
+
+## Intelligence Pipeline
+
+The intelligence pipeline processes observations into prioritized attention cards:
+
+```
+MarketObservation -> DetectedChange -> SignificanceAssessment -> Attention Feed
+```
+
+### V1 Significance Model
+
+Significance scoring evaluates an observed price move across 5 components. Each component is normalized to a value between `0.0` and `1.0`:
+
+| Component | Weight | Description |
+| :--- | :--- | :--- |
+| Magnitude | 0.30 | Move size relative to instrument's historical absolute returns distribution. Uses empirical percentile rank when >= 3 historical observations exist; linear fallback otherwise. |
+| Abnormality | 0.25 | Statistical deviation from mean return using historical z-score (`min(abs(z) / 3.0, 1.0)`). |
+| Relative Performance | 0.20 | Excess return compared against market benchmark (NIFTY 50) over the same period. |
+| Volume Surge | 0.15 | Current trading volume divided by trailing average volume. |
+| Material Events | 0.10 | Corporate actions, earnings releases, or regulatory filings during the window. |
+
+### Available Evidence Re-weighting
+
+If certain components lack data (for example, missing volume or benchmark series), the pipeline does not penalize the stock. It normalizes weights across available components:
+
+$$\text{Overall Score} = \frac{\sum_{i \in \text{Available}} (S_i \times W_i)}{\sum_{i \in \text{Available}} W_i}$$
+
+### Attention Levels
+
+- High Attention: Overall score >= `0.70`
+- Medium Attention: Overall score >= `0.40`
+- Low Attention: Overall score >= `0.20`
+- No Meaningful Change: Overall score < `0.20` (filtered out of primary attention feed)
+
+The weights and thresholds represent a calibrated V1 heuristic for filtering market noise, not an immutable law of finance.
+
+## Data Model
+
+Key relational database entities managed via PostgreSQL:
+
+- `User`: Identity record storing unique email, scrypt-hashed password, name, and active status.
+- `Watchlist`: Named list of instruments owned by a specific user (`user_id`).
+- `WatchlistItem`: Membership join table with `position` sequence and a composite unique constraint `UNIQUE(watchlist_id, instrument_id)`.
+- `Instrument`: Authoritative security record with unique `nse_symbol`, company name, and exchange.
+- `MarketObservation`: Historical end-of-day price (`open`, `high`, `low`, `close`, `price`), volume, and timestamp with `UNIQUE(instrument_id, observed_at, source)`.
+- `MarketEvent`: Corporate actions and dividend announcements linked to instruments.
+- `NewsArticle`: Cached news articles with external provider article ID and composite unique constraint `UNIQUE(provider, provider_article_id, instrument_id)`.
+- `UserObservation`: Records the baseline observation ID when a user explicitly checks their watchlist with `UNIQUE(user_id, watchlist_id, instrument_id)`.
+- `DetectedChange`: Detected price/volume change record between a user's baseline observation and current observation.
+- `SignificanceAssessment`: Calculated component scores, overall score, attention level, and structured explanation for a detected change.
+- `ChangeReview`: Acknowledgment record indicating a user has reviewed a change with `UNIQUE(user_id, detected_change_id)`.
+
+## Data Sources and Freshness
+
+- Market Data: Consumes authoritative National Stock Exchange (NSE) CM-UDiFF (Capital Market Unified Distributable File Format) Bhavcopy CSV files. Data represents official End-of-Day (EOD) settled sessions. The application does not claim or fabricate live streaming tick feeds.
+- Freshness Transparency: Every price display and API response reports source, data status (`HISTORICAL`, `FINAL`, or `UNAVAILABLE`), and observation timestamp.
+- Contextual News: Integrated with Marketaux REST API to query recent financial headlines matching instrument symbols within a 72-hour window of detected moves.
+
+## News Context
+
+Marketaux news is integrated as a supplementary context layer. It never modifies, scales, or replaces the quantitative significance calculation.
+
+- Non-Causal Presentation: News is presented under the heading *"Potentially relevant news around this move"* with temporal proximity notes (e.g., *"Published within hours of the detected move"*). The application never states that an article caused a market movement.
+- Relevance Ranking: Articles are ranked by entity match score, direct ticker match, and temporal closeness to the change event, capped at a maximum of 3 articles.
+- Fallback: When no qualifying articles exist, the system displays: *"No relevant news found around this change."*
+
+## Authentication and Security
+
+- Password Hashing: Uses memory-hard scrypt (`hashlib.scrypt`) with unique 16-byte cryptographically secure salts and constant-time digest comparison (`secrets.compare_digest`). Passwords are never stored in plaintext.
+- Stateless Tokens: HS256-signed JSON Web Tokens (JWT) containing subject, email, issue time, and expiration.
+- Server-Side Authorization: User identity is extracted exclusively from validated bearer tokens. Client-provided user IDs are rejected. Database queries strictly filter by `user_id == current_user.id`. Access attempts to resources owned by other users return `404 Not Found` to prevent resource enumeration.
+- Credential Protection: `MARKETAUX_API_TOKEN` and JWT secret keys are loaded from backend configuration and never exposed in API responses or frontend code.
+- Sanitized Errors: Unhandled exceptions are logged server-side and returned as generic 500 error responses without leaking SQL statements, table structures, or stack traces.
+
+## API Endpoints
+
+All application routes are versioned under `/api/v1`:
+
+### Authentication
+- `POST /api/v1/auth/register`: Register a new user account.
+- `POST /api/v1/auth/login`: Authenticate credentials and receive access token.
+- `GET /api/v1/auth/me`: Retrieve current authenticated user profile.
+- `POST /api/v1/auth/logout`: Terminate session acknowledgment.
+
+### Watchlists
+- `GET /api/v1/watchlists`: List all watchlists owned by authenticated user.
+- `POST /api/v1/watchlists`: Create a new watchlist.
+- `GET /api/v1/watchlists/{id}`: Get watchlist details with ordered items.
+- `PATCH /api/v1/watchlists/{id}`: Rename a watchlist.
+- `DELETE /api/v1/watchlists/{id}`: Delete a watchlist.
+- `POST /api/v1/watchlists/{id}/items`: Add an instrument to a watchlist.
+- `DELETE /api/v1/watchlists/{id}/items/{instrument_id}`: Remove an instrument from a watchlist.
+- `PATCH /api/v1/watchlists/{id}/items/reorder`: Reorder instruments in a watchlist.
+
+### Instruments
+- `GET /api/v1/instruments`: Search and list available NSE instruments.
+- `GET /api/v1/instruments/{id}`: Retrieve stock detail, change timeline, and news.
+
+### Market Data
+- `GET /api/v1/watchlists/{id}/market`: Get latest market prices and session changes.
+- `POST /api/v1/watchlists/{id}/refresh`: Ingest the next chronological market observation.
+
+### Changes and Attention
+- `POST /api/v1/watchlists/{id}/check`: Establish or advance user observation baseline.
+- `GET /api/v1/watchlists/{id}/changes`: Retrieve detected candidate changes since baseline.
+- `GET /api/v1/watchlists/{id}/attention`: Retrieve filtered, ranked attention cards.
+- `POST /api/v1/watchlists/{id}/changes/{change_id}/review`: Mark individual change as reviewed.
+- `POST /api/v1/watchlists/{id}/instruments/{instrument_id}/review`: Mark all changes for an instrument as reviewed.
+- `POST /api/v1/watchlists/{id}/review-all`: Mark all surfaced changes in watchlist as reviewed.
+
+### Health
+- `GET /api/v1/health`: System health and status check.
+
+## Local Development
 
 ### Prerequisites
 
-- **Python** ≥ 3.11
-- **Node.js** ≥ 18 and **npm** ≥ 9
-- **Docker** & **Docker Compose**
-
----
+- Python >= 3.11
+- Node.js >= 18 and npm >= 9
+- Docker and Docker Compose
+- PostgreSQL 16 (or Docker container)
 
 ### Step 1: Start PostgreSQL
+
+From the project root:
 
 ```bash
 docker compose up -d
 ```
 
-*(Note: Port mapping is configurable via `POSTGRES_PORT` in `.env`. Default is `5432` or `5433` if port 5432 is in use by a local service).*
+### Step 2: Configure Environment Variables
 
----
-
-### Step 2: Run Alembic Migrations
-
-From the repository root (or inside `backend`):
+Create `backend/.env` based on `backend/.env.example`:
 
 ```bash
-# Windows PowerShell
-.\backend\.venv\Scripts\alembic.exe upgrade head
+# Database
+DATABASE_URL=postgresql+asyncpg://smw_user:smw_password@localhost:5433/smw_db
+TEST_DATABASE_URL=postgresql+asyncpg://smw_user:smw_password@localhost:5433/smw_test_db
 
-# Linux / macOS
-alembic upgrade head
+# Security
+SECRET_KEY=your-secure-random-secret-key-at-least-32-chars
+ACCESS_TOKEN_EXPIRE_MINUTES=10080
+
+# External Integrations (Optional)
+MARKETAUX_API_TOKEN=your_marketaux_api_token
 ```
 
----
+### Step 3: Run Database Migrations
 
-### Step 3: Seed Development Data
-
-Seed the deterministic development user (`id=1`) and authoritative instruments (`TCS`, `RELIANCE`, `INFY`, `HDFCBANK`, `SBIN`, `ICICIBANK`):
+Apply Alembic migrations to set up the database schema:
 
 ```bash
-# Windows PowerShell
+# Windows
+.\backend\.venv\Scripts\alembic.exe -c backend/alembic.ini upgrade head
+
+# Linux / macOS
+alembic -c backend/alembic.ini upgrade head
+```
+
+### Step 4: Seed Development Data
+
+Seed the deterministic demo user (`dev@example.com` / `password123`) and initial NSE equities:
+
+```bash
+# Windows
 $env:PYTHONPATH="backend"; .\backend\.venv\Scripts\python.exe -m app.seed
 
 # Linux / macOS
-PYTHONPATH=backend python -m app.seed
+PYTHONPATH=backend python3 -m app.seed
 ```
-
-*(This command is 100% idempotent and can be safely executed repeatedly without creating duplicates).*
-
----
-
-### Step 4: Run NSE Bhavcopy Ingestion
-
-Ingest a realistic CM-UDiFF Bhavcopy file using the CLI tool:
-
-```bash
-# Ingest Day 1 observations
-$env:PYTHONPATH="backend"; .\backend\.venv\Scripts\python.exe -m app.ingestion.nse --file data/nse_bhavcopy_2026-09-01.csv
-
-# Ingest Day 2 observations (demonstrates price change calculations)
-$env:PYTHONPATH="backend"; .\backend\.venv\Scripts\python.exe -m app.ingestion.nse --file data/nse_bhavcopy_2026-09-02.csv
-```
-
-Features:
-- Resolves ticker symbols against existing database `Instrument` records.
-- Safely reports unmatched symbols (e.g. `UNTRACKEDCO`) without aborting or corrupting data.
-- Handles missing or malformed numeric rows gracefully.
-- Idempotent: repeated runs update observations via database constraint `ON CONFLICT DO UPDATE`.
-
----
 
 ### Step 5: Start Backend Server
 
 ```bash
+# Windows
 cd backend
-..\backend\.venv\Scripts\uvicorn.exe app.main:app --reload --port 8000
+.\.venv\Scripts\uvicorn.exe app.main:app --reload --port 8000
+
+# Linux / macOS
+cd backend
+uvicorn app.main:app --reload --port 8000
 ```
 
 - API Base: `http://localhost:8000`
-- Interactive OpenAPI Docs: `http://localhost:8000/docs`
-- Health Check: `http://localhost:8000/api/v1/health`
-
----
+- OpenAPI Documentation: `http://localhost:8000/docs`
 
 ### Step 6: Start Frontend Application
+
+In a separate terminal:
 
 ```bash
 cd frontend
@@ -216,98 +316,92 @@ npm install
 npm run dev
 ```
 
-- Web UI: `http://localhost:5173`
+- Web Interface: `http://localhost:5173`
 
----
+Log in using the demo account credentials:
+- Email: `dev@example.com`
+- Password: `password123`
 
-### Step 7: Run Automated Tests
+## Environment Variables
 
-Run the complete test suite against the live PostgreSQL test database:
+| Variable | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `DATABASE_URL` | String | Yes | Async PostgreSQL connection string for application. |
+| `TEST_DATABASE_URL` | String | Yes | Isolated test database connection string. |
+| `SECRET_KEY` | String | Yes | Cryptographic secret for signing JWT tokens. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Integer | No | JWT expiration lifetime (default: 10080 / 7 days). |
+| `MARKETAUX_API_TOKEN` | String | No | Marketaux API token for contextual news. If omitted, app operates gracefully in degraded mode. |
+| `MARKETAUX_BASE_URL` | String | No | Base endpoint for Marketaux API (default: `https://api.marketaux.com/v1`). |
+| `MARKETAUX_TIMEOUT_SECONDS` | Float | No | HTTP timeout for external news queries (default: 8.0s). |
 
-```bash
-.\backend\.venv\Scripts\pytest.exe backend/tests -v
-```
+## Testing
 
-All 20 tests verify:
-- Database relational cascading and uniqueness constraints
-- Seeding idempotency and required instruments
-- Instrument search by symbol and company name
-- Watchlist CRUD, membership, reordering, and constraint validation
-- NSE CM-UDiFF parsing, malformed row handling, and idempotent upserts
-- Market data API price and percentage change calculations
+The project contains a comprehensive automated test suite with 114 test cases spanning unit, integration, security, and end-to-end tests. Tests execute against an isolated test database (`smw_test_db`).
 
----
-
-## 6. Marketaux News Integration (Milestone 7)
-
-Marketaux is integrated as an **isolated supporting context layer** for detected market changes. It is **not** a generic news feed, **not** an investment advisor, and **never** influences or replaces the quantitative significance scoring pipeline.
-
-### Architectural Principles
-
-```
-MarketObservation
-      ↓
-DetectedChange
-      ↓
-SignificanceAssessment (Pure Quantitative Scoring)
-      ↓
-Attention Feed / Stock Detail
-      ↓
-Supporting News Context (MarketauxNewsProvider — Supplementary Context Only)
-```
-
-1. **Strict Non-Causal Wording**:
-   The system displays: *"Potentially relevant news around this move"* and explains proximity (*"Published during the observation window"*, *"Published within hours of the detected move"*). It never claims or implies that news "caused" the price movement.
-2. **Relevance Ranking & Limits**:
-   - Ranked deterministically based on entity match (`match_score` from Marketaux), direct ticker symbol / company name presence, publication recency, and temporal proximity to the detected move.
-   - Temporal window: Constrained to news published within 72 hours before the change up to 24 hours after the change.
-   - Capped at a maximum of **3** qualifying articles.
-   - When no qualifying articles exist, displays: *"No relevant news found around this change."*
-3. **Resilience & Graceful Degradation**:
-   - News retrieval failures (HTTP 401, 429 rate limit, 5xx server error, network timeout) are caught safely.
-   - Market observations, change detection, significance scoring, and the attention feed operate with 100% reliability regardless of news availability.
-4. **Token Security**:
-   - `MARKETAUX_API_TOKEN` is strictly backend-only.
-   - Never logged (HTTP request logger filters out query params and token strings).
-   - Never exposed in frontend bundles or API responses.
-   - Untrusted third-party article titles and summaries are rendered safely without raw HTML injection.
-5. **Idempotent Persistence**:
-   - Articles are cached in the PostgreSQL `news_articles` table with a composite constraint `UNIQUE(provider, provider_article_id, instrument_id)`.
-   - Repeated queries for the same move query the local database first, minimizing external API calls and rate-limiting.
-
-### Configuration
-
-Add `MARKETAUX_API_TOKEN` to your backend `.env` file or environment variables:
+### Running Backend Tests
 
 ```bash
-# In backend/.env
-MARKETAUX_API_TOKEN=your_api_token_here
-MARKETAUX_BASE_URL=https://api.marketaux.com/v1
-MARKETAUX_TIMEOUT_SECONDS=10.0
+# Windows
+cd backend
+.\.venv\Scripts\pytest.exe tests -v
+
+# Linux / macOS
+cd backend
+pytest tests -v
 ```
 
-*(If `MARKETAUX_API_TOKEN` is unset or empty, the application runs seamlessly in degraded mode, providing full attention and significance intelligence without external news calls).*
-
----
-
-## 7. Running Tests
-
-Run the complete 103-test suite across all milestones:
+### Building Frontend
 
 ```bash
-.\backend\.venv\Scripts\pytest.exe backend/tests -v
+cd frontend
+npm run build
 ```
 
-Test coverage:
-- `test_milestone7_marketaux_news.py`: Marketaux response normalization, missing token handling, timeout/5xx resilience, 429 rate limit / 401 handling, idempotent persistence, instrument association, relevance ranking (top 3 limit), temporal proximity, fallback state, unchanged significance calculation, and token security.
-- `test_milestone6_stock_detail.py`: Stock detail contract, "since last checked" state, evidence breakdown, change timeline, benchmark context.
-- `test_milestone5_attention_feed.py`: Attention feed summaries, signal episodes, ranking, review state persistence, and audit log.
-- `test_milestone4_market_freshness.py`: Dynamic instrument discovery, bhavcopy ingestion, multi-session baseline progression.
-- Foundation tests (`test_watchlists.py`, `test_user_observation.py`, `test_significance_scoring.py`, `test_ingestion.py`, `test_instruments.py`, `test_seed.py`).
+## Engineering Decisions and Trade-offs
 
----
+1. Relational Database over Document Store: Market data, user observations, watchlist memberships, and audit reviews require strict ACID compliance, foreign key cascading, and composite uniqueness invariants. PostgreSQL guarantees that stale observations or orphan items cannot corrupt state.
+2. Deterministic Heuristic Scoring over Machine Learning: Financial machine learning models often behave as black boxes that struggle to explain *why* a move matters. A transparent, evidence-weighted model provides auditable reasoning that users can verify against concrete numbers.
+3. Attention Prioritization Separate from Financial Significance: A high-significance move that the user has already seen or reviewed does not need repeated alarms. Decoupling mathematical significance from attention state enables an uncluttered attention feed.
+4. Persistent Baseline Separation: Background ingestion of new bhavcopies updates the market snapshot without moving the user's baseline. A change is only cleared when the user explicitly reviews it or clicks "Check for changes".
+5. Marketaux as Supporting Context: News is treated strictly as qualitative background reading. This avoids the fragility of automated sentiment scoring and prevents external news availability from impacting core market data calculations.
+6. Graceful Degradation: If Marketaux returns rate limits (HTTP 429), timeouts, or server errors, the attention feed continues functioning with full quantitative fidelity, displaying clean fallbacks.
+7. Lightweight JWT without Heavy Auth Dependencies: Authentication uses standard library `hashlib.scrypt` and RFC 7519 HMAC-SHA256 JWT tokens. This eliminates heavy external dependencies like passlib, bcrypt, or complex auth microservices while adhering to NIST and OWASP standards.
 
-## 8. Known Limitations & Follow-ups
+## Limitations and Future Improvements
 
-- **External Free Tier Quotas**: Marketaux free-tier tokens have daily request limits. The local PostgreSQL news cache and 72-hour windowing mitigate repeated hits, but high-volume watchlists may encounter 429s (handled gracefully by the fallback state).
-- **Historical Backfill**: Real-time bhavcopy files represent historical dates; if historical news beyond the provider's free-tier archive window is queried, Marketaux may return empty results, correctly triggering the *"No relevant news found around this change"* fallback.
+1. End-of-Day Data Granularity: The current market data provider parses daily NSE CM-UDiFF Bhavcopy files. Intraday minute-by-minute ticks are not currently ingested.
+2. Marketaux Free Tier Limits: External news retrieval is constrained by provider daily quota limits. The database cache mitigates repeated calls, but high query frequency may encounter provider throttling.
+3. Single Exchange Focus: Ingestion is tailored for the National Stock Exchange of India (NSE). Support for BSE or international exchanges would require additional provider implementations.
+4. Single-Factor Benchmark: Relative performance is calculated exclusively against NIFTY 50. Sector-specific indices could provide more localized relative performance context in future iterations.
+
+## Project Structure
+
+```
+groww-challenge/
+├── AGENTS.md                                # Engineering constitution and operational rules
+├── README.md                                # Project documentation
+├── docker-compose.yml                       # PostgreSQL multi-database container config
+├── backend/
+│   ├── alembic/                             # Database migrations
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── deps.py                      # Authentication & session dependencies
+│   │   │   └── v1/                          # Versioned REST route controllers
+│   │   ├── core/
+│   │   │   └── security.py                  # Password hashing & JWT token handling
+│   │   ├── models/                          # SQLAlchemy database entities
+│   │   ├── providers/                       # Market data provider implementations
+│   │   ├── schemas/                         # Pydantic validation schemas
+│   │   ├── services/                        # Business logic, scoring & news service
+│   │   ├── config.py                        # Application settings
+│   │   ├── main.py                          # FastAPI application factory
+│   │   └── seed.py                          # Idempotent development seed engine
+│   └── tests/                               # Comprehensive pytest automated test suite
+└── frontend/
+    ├── src/
+    │   ├── api.js                           # API client with automatic token injection
+    │   ├── App.jsx                          # Main React UI component & AuthView
+    │   └── App.css                          # Application styling
+    ├── index.html
+    └── package.json
+```

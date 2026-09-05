@@ -55,8 +55,24 @@ async def db_session():
         yield session
 
 
+from app.core.security import create_access_token
+from app.seed import DEV_USER_ID
+
+
 @pytest_asyncio.fixture
 async def client():
+    transport = ASGITransport(app=app)
+    token = create_access_token(user_id=DEV_USER_ID, email="dev@example.com")
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": f"Bearer {token}"},
+    ) as ac:
+        yield ac
+
+
+@pytest_asyncio.fixture
+async def unauthenticated_client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

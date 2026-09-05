@@ -1,5 +1,6 @@
 /* ============================================================
-   Smart Market Watchlist – global styles
+   BEACON — Know what deserves your attention.
+   Global design system & tokens
    ============================================================ */
 
 /* Reset & base */
@@ -10,51 +11,73 @@
 }
 
 :root {
-  /* Palette */
-  --color-bg:           #0d1117;
-  --color-surface:      #161b22;
-  --color-surface-2:    #1e242d;
-  --color-border:       #2d333b;
-  --color-accent:       #58a6ff;
-  --color-accent-glow:  rgba(88, 166, 255, 0.15);
-  --color-text-primary: #e6edf3;
-  --color-text-muted:   #8b949e;
-  --color-success:      #3fb950;
-  --color-danger:       #f85149;
-  --color-warning:      #d29922;
+  /* Beacon Core Palette: Obsidian & Golden Amber */
+  --color-bg:           #090C13;
+  --color-surface:      #0E1422;
+  --color-surface-2:    #141D30;
+  --color-surface-3:    #1B263E;
+  --color-border:       #1E293B;
+  --color-border-subtle: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(245, 158, 11, 0.35);
+  
+  /* Primary Beacon Amber Accent */
+  --beacon-gold:        #F59E0B;
+  --beacon-gold-light:  #FBBF24;
+  --beacon-gold-dark:   #D97706;
+  --beacon-gold-glow:   rgba(245, 158, 11, 0.15);
+  --color-accent:       var(--beacon-gold);
+  --color-accent-glow:  var(--beacon-gold-glow);
+  
+  /* Financial Directional Signals */
+  --color-success:      #10B981;
+  --color-success-bg:   rgba(16, 185, 129, 0.12);
+  --color-danger:       #EF4444;
+  --color-danger-bg:    rgba(239, 68, 68, 0.12);
+  --color-warning:      #F59E0B;
+  --color-info:         #38BDF8;
+  --color-info-bg:      rgba(56, 189, 248, 0.12);
 
-  /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  /* Typography Colors */
+  --color-text-primary:   #F8FAFC;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted:     #64748B;
+  --color-text-dim:       #475569;
+
+  /* Typography Fonts */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
 
   /* Spacing scale */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
   --space-4: 1rem;
+  --space-5: 1.25rem;
   --space-6: 1.5rem;
   --space-8: 2rem;
+  --space-10: 2.5rem;
   --space-12: 3rem;
   --space-16: 4rem;
 
   /* Border radius */
   --radius-sm:  0.375rem;
-  --radius-md:  0.625rem;
-  --radius-lg:  1rem;
+  --radius-md:  0.5rem;
+  --radius-lg:  0.75rem;
+  --radius-xl:  1rem;
   --radius-full: 9999px;
 
   /* Transitions */
-  --transition-fast:   150ms ease;
-  --transition-normal: 250ms ease;
+  --transition-fast:   150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html, body {
-  height: 100%;
+  min-height: 100%;
   background-color: var(--color-bg);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -64,3 +87,23 @@ html, body {
   display: flex;
   flex-direction: column;
 }
+
+/* Custom Scrollbar for sleek fintech look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+

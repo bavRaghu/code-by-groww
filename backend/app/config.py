@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     marketaux_base_url: str = "https://api.marketaux.com/v1"
     marketaux_timeout_seconds: float = 8.0
 
+    # ------------------------------------------------------------------ #
+    # Authentication & Security
+    # ------------------------------------------------------------------ #
+    secret_key: str = "smw-super-secret-key-change-in-production-groww-2026"
+    access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
+
 
 # Module-level singleton – import this everywhere else.
 settings = Settings()

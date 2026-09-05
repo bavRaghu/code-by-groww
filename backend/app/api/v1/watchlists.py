@@ -1,10 +1,11 @@
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+﻿from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.instrument import Instrument
 from app.models.user import User
@@ -39,32 +40,18 @@ from app.services.review import (
     review_detected_change,
     review_instrument_changes,
 )
-from app.seed import DEV_USER_ID
-
 
 router = APIRouter(prefix="/watchlists", tags=["watchlists"])
-
-
-async def _get_dev_user(db: AsyncSession) -> User:
-    stmt = select(User).where(User.id == DEV_USER_ID)
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-    if user is None:
-        user = User(id=DEV_USER_ID)
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-    return user
 
 
 @router.post("", response_model=WatchlistDetailResponse, status_code=status.HTTP_201_CREATED)
 async def create_watchlist(
     payload: WatchlistCreate,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WatchlistDetailResponse:
-    await _get_dev_user(db)
     watchlist = Watchlist(
-        user_id=DEV_USER_ID,
+        user_id=current_user.id,
         name=payload.name.strip(),
     )
     db.add(watchlist)
@@ -83,13 +70,13 @@ async def create_watchlist(
 
 @router.get("", response_model=list[WatchlistSummaryResponse])
 async def list_watchlists(
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[WatchlistSummaryResponse]:
-    await _get_dev_user(db)
     stmt = (
         select(Watchlist, func.count(WatchlistItem.id).label("item_count"))
         .outerjoin(WatchlistItem, Watchlist.id == WatchlistItem.watchlist_id)
-        .where(Watchlist.user_id == DEV_USER_ID)
+        .where(Watchlist.user_id == current_user.id)
         .group_by(Watchlist.id)
         .order_by(Watchlist.id)
     )
@@ -111,41 +98,39 @@ async def list_watchlists(
 
 @router.get("/{watchlist_id}", response_model=WatchlistDetailResponse)
 async def get_watchlist(
-    watchlist_id: int,
+    watchlist_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Watchlist:
     stmt = (
         select(Watchlist)
         .options(selectinload(Watchlist.items).selectinload(WatchlistItem.instrument))
-        .where(Watchlist.id == watchlist_id)
+        .where(Watchlist.id == watchlist_id, Watchlist.user_id == current_user.id)
     )
     result = await db.execute(stmt)
     watchlist = result.scalar_one_or_none()
     if watchlist is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
-    if watchlist.user_id != DEV_USER_ID:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     return watchlist
 
 
 @router.patch("/{watchlist_id}", response_model=WatchlistDetailResponse)
 async def update_watchlist(
-    watchlist_id: int,
     payload: WatchlistUpdate,
+    watchlist_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Watchlist:
     stmt = (
         select(Watchlist)
         .options(selectinload(Watchlist.items).selectinload(WatchlistItem.instrument))
-        .where(Watchlist.id == watchlist_id)
+        .where(Watchlist.id == watchlist_id, Watchlist.user_id == current_user.id)
     )
     result = await db.execute(stmt)
     watchlist = result.scalar_one_or_none()
     if watchlist is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
-    if watchlist.user_id != DEV_USER_ID:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     watchlist.name = payload.name.strip()
     watchlist.updated_at = datetime.now(timezone.utc)
@@ -156,16 +141,15 @@ async def update_watchlist(
 
 @router.delete("/{watchlist_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_watchlist(
-    watchlist_id: int,
+    watchlist_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    stmt = select(Watchlist).where(Watchlist.id == watchlist_id)
+    stmt = select(Watchlist).where(Watchlist.id == watchlist_id, Watchlist.user_id == current_user.id)
     result = await db.execute(stmt)
     watchlist = result.scalar_one_or_none()
     if watchlist is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
-    if watchlist.user_id != DEV_USER_ID:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     await db.delete(watchlist)
     await db.commit()
@@ -179,18 +163,17 @@ async def delete_watchlist(
 
 @router.post("/{watchlist_id}/items", response_model=WatchlistItemResponse, status_code=status.HTTP_201_CREATED)
 async def add_watchlist_item(
-    watchlist_id: int,
     payload: WatchlistItemCreate,
+    watchlist_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WatchlistItem:
-    # 1. Verify watchlist exists
-    wl_stmt = select(Watchlist).where(Watchlist.id == watchlist_id)
+    # 1. Verify watchlist exists and belongs to current user
+    wl_stmt = select(Watchlist).where(Watchlist.id == watchlist_id, Watchlist.user_id == current_user.id)
     wl_result = await db.execute(wl_stmt)
     watchlist = wl_result.scalar_one_or_none()
     if watchlist is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
-    if watchlist.user_id != DEV_USER_ID:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     # 2. Verify instrument exists
     inst_stmt = select(Instrument).where(Instrument.id == payload.instrument_id)
@@ -243,17 +226,16 @@ async def add_watchlist_item(
 
 @router.delete("/{watchlist_id}/items/{instrument_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_watchlist_item(
-    watchlist_id: int,
-    instrument_id: int,
+    watchlist_id: int = Path(..., gt=0),
+    instrument_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
-    wl_stmt = select(Watchlist).where(Watchlist.id == watchlist_id)
+    wl_stmt = select(Watchlist).where(Watchlist.id == watchlist_id, Watchlist.user_id == current_user.id)
     wl_result = await db.execute(wl_stmt)
     watchlist = wl_result.scalar_one_or_none()
     if watchlist is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
-    if watchlist.user_id != DEV_USER_ID:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     item_stmt = select(WatchlistItem).where(
         WatchlistItem.watchlist_id == watchlist_id,
@@ -271,21 +253,20 @@ async def remove_watchlist_item(
 
 @router.patch("/{watchlist_id}/items/reorder", response_model=WatchlistDetailResponse)
 async def reorder_watchlist_items(
-    watchlist_id: int,
     payload: WatchlistReorderRequest,
+    watchlist_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> Watchlist:
     stmt = (
         select(Watchlist)
         .options(selectinload(Watchlist.items).selectinload(WatchlistItem.instrument))
-        .where(Watchlist.id == watchlist_id)
+        .where(Watchlist.id == watchlist_id, Watchlist.user_id == current_user.id)
     )
     result = await db.execute(stmt)
     watchlist = result.scalar_one_or_none()
     if watchlist is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
-    if watchlist.user_id != DEV_USER_ID:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     item_map = {item.instrument_id: item for item in watchlist.items}
 
@@ -313,15 +294,14 @@ async def reorder_watchlist_items(
 
 @router.post("/{watchlist_id}/check", response_model=WatchlistCheckResponse)
 async def check_watchlist_endpoint(
-    watchlist_id: int,
+    watchlist_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WatchlistCheckResponse:
     try:
-        res = await mark_watchlist_checked(db, DEV_USER_ID, watchlist_id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        res = await mark_watchlist_checked(db, current_user.id, watchlist_id)
+    except (ValueError, PermissionError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
 
     return WatchlistCheckResponse(
         watchlist_id=res.watchlist_id,
@@ -335,15 +315,14 @@ async def check_watchlist_endpoint(
 
 @router.get("/{watchlist_id}/changes", response_model=WatchlistChangesResponse)
 async def get_watchlist_changes(
-    watchlist_id: int,
+    watchlist_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WatchlistChangesResponse:
     try:
-        result = await detect_changes_for_watchlist(db, DEV_USER_ID, watchlist_id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        result = await detect_changes_for_watchlist(db, current_user.id, watchlist_id)
+    except (ValueError, PermissionError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
 
     change_items: list[DetectedChangeItem] = []
     instruments_with_changes_set = set()
@@ -417,27 +396,27 @@ async def get_watchlist_changes(
 
 @router.get("/{watchlist_id}/attention", response_model=WatchlistAttentionResponse)
 async def get_watchlist_attention_endpoint(
-    watchlist_id: int,
+    watchlist_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WatchlistAttentionResponse:
     try:
-        return await get_watchlist_attention(db, DEV_USER_ID, watchlist_id)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        return await get_watchlist_attention(db, current_user.id, watchlist_id)
+    except (ValueError, PermissionError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Watchlist not found")
 
 
 @router.post("/{watchlist_id}/changes/{change_id}/review", response_model=ChangeReviewResponse)
 async def review_change_endpoint(
-    watchlist_id: int,
-    change_id: int,
+    watchlist_id: int = Path(..., gt=0),
+    change_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ChangeReviewResponse:
     try:
         change, review_record = await review_detected_change(
             db=db,
-            user_id=DEV_USER_ID,
+            user_id=current_user.id,
             watchlist_id=watchlist_id,
             change_id=change_id,
         )
@@ -446,22 +425,21 @@ async def review_change_endpoint(
             review_status=change.review_status,
             reviewed_at=change.reviewed_at or review_record.reviewed_at,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except (ValueError, PermissionError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
 
 @router.post("/{watchlist_id}/instruments/{instrument_id}/review", response_model=InstrumentReviewResponse)
 async def review_instrument_endpoint(
-    watchlist_id: int,
-    instrument_id: int,
+    watchlist_id: int = Path(..., gt=0),
+    instrument_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> InstrumentReviewResponse:
     try:
         count = await review_instrument_changes(
             db=db,
-            user_id=DEV_USER_ID,
+            user_id=current_user.id,
             watchlist_id=watchlist_id,
             instrument_id=instrument_id,
         )
@@ -471,21 +449,20 @@ async def review_instrument_endpoint(
             review_status="reviewed",
             reviewed_at=datetime.now(timezone.utc),
         )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except (ValueError, PermissionError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
 
 @router.post("/{watchlist_id}/review-all", response_model=WatchlistReviewAllResponse)
 async def review_all_watchlist_endpoint(
-    watchlist_id: int,
+    watchlist_id: int = Path(..., gt=0),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WatchlistReviewAllResponse:
     try:
         count = await review_all_watchlist_changes(
             db=db,
-            user_id=DEV_USER_ID,
+            user_id=current_user.id,
             watchlist_id=watchlist_id,
         )
         return WatchlistReviewAllResponse(
@@ -494,9 +471,5 @@ async def review_all_watchlist_endpoint(
             review_status="reviewed",
             reviewed_at=datetime.now(timezone.utc),
         )
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
-
-
+    except (ValueError, PermissionError):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")

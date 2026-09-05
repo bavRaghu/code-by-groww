@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_current_user_optional
 from app.db.session import get_db
 from app.models.instrument import Instrument
+from app.models.user import User
 from app.schemas.instrument import InstrumentResponse
 from app.schemas.stock_detail import StockDetailResponse
-from app.seed import DEV_USER_ID
 from app.services.stock_detail import get_stock_detail
 
 router = APIRouter(prefix="/instruments", tags=["instruments"])
@@ -40,16 +41,18 @@ async def list_instruments(
 async def get_instrument_detail(
     instrument_id: int,
     watchlist_id: int | None = Query(None, description="Optional active watchlist context"),
+    current_user: User | None = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ) -> StockDetailResponse:
     """
     Retrieve comprehensive stock detail including 'since you last checked' comparison,
     evidence breakdown, change timeline episodes, and bounded chart series.
     """
+    user_id = current_user.id if current_user else 1
     try:
         return await get_stock_detail(
             db=db,
-            user_id=DEV_USER_ID,
+            user_id=user_id,
             instrument_id=instrument_id,
             watchlist_id=watchlist_id,
         )

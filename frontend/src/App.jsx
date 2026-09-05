@@ -1,6 +1,31 @@
 import { useState, useEffect, useCallback } from 'react';
 import './App.css';
 import {
+  Sparkles,
+  Clock,
+  Activity,
+  TrendingUp,
+  TrendingDown,
+  Search,
+  RefreshCw,
+  Check,
+  Trash2,
+  Plus,
+  LogOut,
+  ExternalLink,
+  AlertCircle,
+  Shield,
+  ArrowUpRight,
+  Filter,
+  CheckCircle2,
+  ChevronRight,
+  BookOpen,
+  Info,
+} from 'lucide-react';
+import LandingPage from './components/LandingPage';
+import AuthView from './components/AuthView';
+import StockDetailView from './components/StockDetailView';
+import {
   fetchWatchlists,
   createWatchlist,
   deleteWatchlist,
@@ -15,7 +40,11 @@ import {
   reviewChange,
   reviewInstrumentChanges,
   reviewAllWatchlistChanges,
-  fetchStockDetail,
+  loginUser,
+  fetchCurrentUser,
+  logoutUser,
+  getAuthToken,
+  clearAuthToken,
 } from './api';
 
 function formatDateTime(isoString) {
@@ -44,7 +73,7 @@ function getAttentionLevelMeta(level) {
     case 'LOW':
       return { label: 'Low Attention', badgeClass: 'attention-badge--low', cardClass: 'attention-card--low' };
     default:
-      return { label: level, badgeClass: '', cardClass: '' };
+      return { label: level || 'Routine', badgeClass: 'attention-badge--none', cardClass: '' };
   }
 }
 
@@ -62,879 +91,16 @@ function getEvidenceCompletenessMeta(completeness) {
   }
 }
 
-function getChangeTypeMeta(type) {
-  switch (type) {
-    case 'PRICE_MOVE':
-      return { label: 'Price Movement', badgeClass: 'change-badge--price' };
-    case 'ABNORMAL_RETURN':
-      return { label: 'Unusual Movement', badgeClass: 'change-badge--abnormal' };
-    case 'RELATIVE_PERFORMANCE':
-      return { label: 'Relative Performance', badgeClass: 'change-badge--relative' };
-    case 'VOLUME_ANOMALY':
-      return { label: 'Volume Anomaly', badgeClass: 'change-badge--volume' };
-    case 'MATERIAL_EVENT':
-      return { label: 'Material Event', badgeClass: 'change-badge--event' };
-    default:
-      return { label: type, badgeClass: 'change-badge--price' };
-  }
-}
 
-function StockChart({ series, symbol }) {
-  const [hoverIndex, setHoverIndex] = useState(null);
-
-  if (!series || series.length === 0) {
-    return (
-      <div className="stock-chart-empty">
-        <span>No historical observation series available for charting.</span>
-      </div>
-    );
-  }
-
-  const width = 760;
-  const height = 280;
-  const margin = { top: 30, right: 35, bottom: 40, left: 65 };
-  const plotWidth = width - margin.left - margin.right;
-  const priceHeight = 140;
-  const volumeGap = 20;
-  const volumeHeight = 50;
-  const volumeTop = margin.top + priceHeight + volumeGap;
-
-  const prices = series.map((p) => Number(p.price));
-  const minRawPrice = Math.min(...prices);
-  const maxRawPrice = Math.max(...prices);
-  const priceRange = maxRawPrice - minRawPrice;
-  const paddingPrice = priceRange === 0 ? (maxRawPrice * 0.05 || 1) : priceRange * 0.1;
-  const minPrice = Math.max(0, minRawPrice - paddingPrice);
-  const maxPrice = maxRawPrice + paddingPrice;
-
-  const volumes = series.map((p) => p.volume || 0);
-  const maxVolume = Math.max(...volumes, 1);
-
-  const getX = (i) => {
-    if (series.length === 1) return margin.left + plotWidth / 2;
-    return margin.left + (i / (series.length - 1)) * plotWidth;
-  };
-
-  const getY = (price) => {
-    if (maxPrice === minPrice) return margin.top + priceHeight / 2;
-    return margin.top + (1 - (price - minPrice) / (maxPrice - minPrice)) * priceHeight;
-  };
-
-  const linePoints = series.map((pt, i) => `${getX(i)},${getY(Number(pt.price))}`).join(' ');
-  const areaPoints = series.length > 1
-    ? `${getX(0)},${margin.top + priceHeight} ${linePoints} ${getX(series.length - 1)},${margin.top + priceHeight}`
-    : '';
-
-  const activePoint = hoverIndex !== null && hoverIndex >= 0 && hoverIndex < series.length
-    ? series[hoverIndex]
-    : null;
-
-  return (
-    <div className="stock-chart-container">
-      <div className="stock-chart-legend">
-        <div className="legend-item">
-          <span className="legend-swatch legend-swatch--line" />
-          <span>NSE Price Series</span>
-        </div>
-        <div className="legend-item">
-          <span className="legend-swatch legend-swatch--baseline" />
-          <span>Baseline Observation (Last Checked)</span>
-        </div>
-        <div className="legend-item">
-          <span className="legend-swatch legend-swatch--current" />
-          <span>Current Observation</span>
-        </div>
-        <div className="legend-item">
-          <span className="legend-swatch legend-swatch--volume" />
-          <span>Session Volume</span>
-        </div>
-      </div>
-
-      {activePoint && (
-        <div className="chart-hover-indicator">
-          <span className="hover-date">{formatDateTime(activePoint.observed_at)}</span>
-          <span className="hover-price">₹{Number(activePoint.price).toFixed(2)}</span>
-          {activePoint.volume && (
-            <span className="hover-vol">Vol: {Number(activePoint.volume).toLocaleString('en-IN')}</span>
-          )}
-          {activePoint.is_baseline && (
-            <span className="hover-tag hover-tag--baseline">★ Baseline</span>
-          )}
-          {activePoint.is_current && (
-            <span className="hover-tag hover-tag--current">● Current</span>
-          )}
-        </div>
-      )}
-
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        className="stock-chart-svg"
-        onMouseLeave={() => setHoverIndex(null)}
-      >
-        <defs>
-          <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#58a6ff" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#58a6ff" stopOpacity="0.0" />
-          </linearGradient>
-        </defs>
-
-        {/* Grid lines & price labels */}
-        {[0, 0.5, 1].map((pct, idx) => {
-          const pVal = minPrice + (1 - pct) * (maxPrice - minPrice);
-          const yPos = margin.top + pct * priceHeight;
-          return (
-            <g key={idx}>
-              <line
-                x1={margin.left}
-                y1={yPos}
-                x2={width - margin.right}
-                y2={yPos}
-                stroke="rgba(255, 255, 255, 0.08)"
-                strokeDasharray="2 4"
-              />
-              <text
-                x={margin.left - 8}
-                y={yPos + 4}
-                fill="var(--color-text-muted)"
-                fontSize="11"
-                textAnchor="end"
-              >
-                ₹{pVal.toFixed(1)}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* Volume baseline */}
-        <line
-          x1={margin.left}
-          y1={volumeTop + volumeHeight}
-          x2={width - margin.right}
-          y2={volumeTop + volumeHeight}
-          stroke="rgba(255, 255, 255, 0.15)"
-        />
-        <text
-          x={margin.left - 8}
-          y={volumeTop + volumeHeight}
-          fill="var(--color-text-muted)"
-          fontSize="10"
-          textAnchor="end"
-        >
-          Vol 0
-        </text>
-        <text
-          x={margin.left - 8}
-          y={volumeTop + 12}
-          fill="var(--color-text-muted)"
-          fontSize="10"
-          textAnchor="end"
-        >
-          {maxVolume > 1000000 ? `${(maxVolume / 1000000).toFixed(1)}M` : `${(maxVolume / 1000).toFixed(0)}k`}
-        </text>
-
-        {/* Volume Bars */}
-        {series.map((pt, i) => {
-          const v = pt.volume || 0;
-          const vH = (v / maxVolume) * volumeHeight;
-          const barW = Math.max(4, Math.min(18, (plotWidth / series.length) * 0.55));
-          const bx = getX(i) - barW / 2;
-          const by = volumeTop + (volumeHeight - vH);
-          const isHov = hoverIndex === i;
-          return (
-            <rect
-              key={`vol-${i}`}
-              x={bx}
-              y={by}
-              width={barW}
-              height={vH}
-              rx="1"
-              fill={isHov ? '#58a6ff' : 'rgba(88, 166, 255, 0.28)'}
-            />
-          );
-        })}
-
-        {/* Area fill under curve */}
-        {series.length > 1 && (
-          <polygon points={areaPoints} fill="url(#priceGradient)" />
-        )}
-
-        {/* Price curve */}
-        {series.length > 1 ? (
-          <polyline
-            points={linePoints}
-            fill="none"
-            stroke="#58a6ff"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        ) : (
-          <circle
-            cx={getX(0)}
-            cy={getY(Number(series[0].price))}
-            r="5"
-            fill="#58a6ff"
-          />
-        )}
-
-        {/* Highlight Circles for Baseline & Current */}
-        {series.map((pt, i) => {
-          const cx = getX(i);
-          const cy = getY(Number(pt.price));
-
-          if (pt.is_baseline) {
-            return (
-              <g key={`marker-base-${i}`}>
-                <circle cx={cx} cy={cy} r="9" fill="rgba(210, 153, 34, 0.25)" />
-                <circle cx={cx} cy={cy} r="5" fill="#d29922" stroke="#161b22" strokeWidth="2" />
-                <rect
-                  x={cx - 30}
-                  y={cy - 24}
-                  width="60"
-                  height="16"
-                  rx="3"
-                  fill="#2d2206"
-                  stroke="#d29922"
-                  strokeWidth="1"
-                />
-                <text
-                  x={cx}
-                  y={cy - 12}
-                  fill="#f0883e"
-                  fontSize="9"
-                  fontWeight="600"
-                  textAnchor="middle"
-                >
-                  Baseline
-                </text>
-              </g>
-            );
-          }
-
-          if (pt.is_current) {
-            return (
-              <g key={`marker-curr-${i}`}>
-                <circle cx={cx} cy={cy} r="9" fill="rgba(88, 166, 255, 0.25)" />
-                <circle cx={cx} cy={cy} r="5" fill="#58a6ff" stroke="#161b22" strokeWidth="2" />
-                <rect
-                  x={cx - 28}
-                  y={cy - 24}
-                  width="56"
-                  height="16"
-                  rx="3"
-                  fill="#03224c"
-                  stroke="#58a6ff"
-                  strokeWidth="1"
-                />
-                <text
-                  x={cx}
-                  y={cy - 12}
-                  fill="#58a6ff"
-                  fontSize="9"
-                  fontWeight="600"
-                  textAnchor="middle"
-                >
-                  Current
-                </text>
-              </g>
-            );
-          }
-          return null;
-        })}
-
-        {/* Hover Crosshair */}
-        {hoverIndex !== null && (
-          <line
-            x1={getX(hoverIndex)}
-            y1={margin.top}
-            x2={getX(hoverIndex)}
-            y2={volumeTop + volumeHeight}
-            stroke="rgba(255, 255, 255, 0.4)"
-            strokeDasharray="3 3"
-          />
-        )}
-
-        {/* Interactive Mouse Hover Targets */}
-        {series.map((pt, i) => {
-          const colWidth = plotWidth / series.length;
-          const tx = getX(i) - colWidth / 2;
-          return (
-            <rect
-              key={`hit-${i}`}
-              x={tx}
-              y={margin.top}
-              width={colWidth}
-              height={priceHeight + volumeGap + volumeHeight}
-              fill="transparent"
-              style={{ cursor: 'crosshair' }}
-              onMouseEnter={() => setHoverIndex(i)}
-            />
-          );
-        })}
-      </svg>
-    </div>
-  );
-}
-
-function StockDetailView({ instrumentId, watchlistId, onBack, onReview }) {
-  const [detail, setDetail] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [reviewing, setReviewing] = useState(false);
-  const [error, setError] = useState(null);
-
-  const loadDetail = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await fetchStockDetail(instrumentId, watchlistId);
-      setDetail(data);
-    } catch (err) {
-      setError(err.message || 'Failed to load stock detail.');
-    } finally {
-      setLoading(false);
-    }
-  }, [instrumentId, watchlistId]);
-
-  useEffect(() => {
-    loadDetail();
-  }, [loadDetail]);
-
-  const handleReview = async () => {
-    if (!watchlistId || !instrumentId) return;
-    setReviewing(true);
-    try {
-      await onReview(instrumentId);
-      await loadDetail();
-    } catch (err) {
-      setError(err.message || 'Failed to review stock changes.');
-    } finally {
-      setReviewing(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="stock-detail-loading">
-        <div className="loading-spinner" />
-        <span>Loading stock detail for #{instrumentId}...</span>
-      </div>
-    );
-  }
-
-  if (error || !detail) {
-    return (
-      <div className="stock-detail-error">
-        <div className="alert alert-error">{error || 'Instrument not found.'}</div>
-        <button type="button" className="btn btn-secondary" onClick={onBack}>
-          ← Back to Watchlist
-        </button>
-      </div>
-    );
-  }
-
-  const {
-    nse_symbol,
-    company_name,
-    exchange,
-    isin,
-    sector,
-    current_observation,
-    since_last_checked,
-    evidence,
-    market_context,
-    timeline,
-    historical_series,
-    freshness_note,
-    source,
-    data_status,
-  } = detail;
-
-  const currentPrice = current_observation?.price !== null && current_observation?.price !== undefined
-    ? Number(current_observation.price)
-    : null;
-  const sessionAbs = current_observation?.session_absolute_change !== null && current_observation?.session_absolute_change !== undefined
-    ? Number(current_observation.session_absolute_change)
-    : null;
-  const sessionPct = current_observation?.session_percentage_change !== null && current_observation?.session_percentage_change !== undefined
-    ? Number(current_observation.session_percentage_change)
-    : null;
-  const sessionIsUp = sessionPct !== null && sessionPct > 0;
-  const sessionIsDown = sessionPct !== null && sessionPct < 0;
-
-  const sycPct = since_last_checked?.percentage_change !== null && since_last_checked?.percentage_change !== undefined
-    ? Number(since_last_checked.percentage_change)
-    : null;
-  const sycAbs = since_last_checked?.absolute_change !== null && since_last_checked?.absolute_change !== undefined
-    ? Number(since_last_checked.absolute_change)
-    : null;
-  const sycIsUp = sycPct !== null && sycPct > 0;
-  const sycIsDown = sycPct !== null && sycPct < 0;
-
-  const sycMeta = getAttentionLevelMeta(since_last_checked?.significance_level || 'NONE');
-  const evidenceMeta = getEvidenceCompletenessMeta(evidence?.evidence_completeness);
-
-  return (
-    <div className="stock-detail-view" aria-label={`Detail view for ${nse_symbol}`}>
-      {/* Top Navigation Bar */}
-      <div className="stock-detail-nav">
-        <button type="button" className="btn btn-secondary" onClick={onBack}>
-          ← Back to Watchlist
-        </button>
-        <div className="stock-detail-nav__tags">
-          <span className="status-badge">{exchange}</span>
-          {sector && <span className="status-badge status-badge--sector">{sector}</span>}
-          {isin && <span className="status-badge status-badge--isin">ISIN: {isin}</span>}
-        </div>
-      </div>
-
-      {/* Stock Hero Section */}
-      <div className="stock-detail-hero">
-        <div className="stock-detail-hero__main">
-          <div className="stock-detail-hero__symbol-wrap">
-            <h1 className="stock-detail-hero__symbol">{nse_symbol}</h1>
-            <span className="stock-detail-hero__company">{company_name}</span>
-          </div>
-          <div className="stock-detail-hero__price-wrap">
-            <div className="stock-detail-hero__price">
-              {currentPrice !== null ? `₹${currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—'}
-            </div>
-            {sessionPct !== null && (
-              <div className={`stock-detail-hero__session-change ${sessionIsUp ? 'val-positive' : sessionIsDown ? 'val-negative' : 'val-neutral'}`}>
-                {sessionIsUp ? '+' : ''}{sessionAbs?.toFixed(2)} ({sessionIsUp ? '+' : ''}{sessionPct?.toFixed(2)}%)
-                <span className="session-label">Session Move</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="stock-detail-hero__meta">
-          <div className="hero-meta-item">
-            <span className="hero-meta-label">Observation Date</span>
-            <span className="hero-meta-val">{formatDateTime(current_observation?.observed_at)}</span>
-          </div>
-          {current_observation?.volume && (
-            <div className="hero-meta-item">
-              <span className="hero-meta-label">Session Volume</span>
-              <span className="hero-meta-val">{Number(current_observation.volume).toLocaleString('en-IN')} shares</span>
-            </div>
-          )}
-          <div className="hero-meta-item">
-            <span className="hero-meta-label">Data Provenance</span>
-            <span className="hero-meta-val">
-              <span className="status-badge status-badge--final">{source} • {data_status}</span>
-            </span>
-          </div>
-        </div>
-
-        {freshness_note && (
-          <div className="stock-detail-hero__provenance-note">
-            ℹ {freshness_note}
-          </div>
-        )}
-      </div>
-
-      {/* Main Grid: Since You Last Checked & Market Context */}
-      <div className="stock-detail-grid">
-        {/* Card: Since You Last Checked */}
-        <div className="stock-detail-card syc-card">
-          <div className="stock-detail-card__header">
-            <div className="stock-detail-card__title">
-              <span>👁️</span>
-              <span>Since You Last Checked</span>
-            </div>
-            <div className="stock-detail-card__actions">
-              {since_last_checked?.is_reviewed ? (
-                <span className="review-status-badge review-status-badge--reviewed">
-                  ✓ Reviewed
-                </span>
-              ) : since_last_checked?.has_baseline ? (
-                <button
-                  type="button"
-                  className="btn btn-review-sm"
-                  onClick={handleReview}
-                  disabled={reviewing}
-                >
-                  {reviewing ? 'Updating...' : 'Mark as Reviewed'}
-                </button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="stock-detail-card__body">
-            {since_last_checked?.has_baseline ? (
-              <>
-                <div className="syc-comparison-grid">
-                  <div className="syc-point">
-                    <span className="syc-point__label">Your Baseline Observation</span>
-                    <span className="syc-point__price">₹{Number(since_last_checked.baseline_price).toFixed(2)}</span>
-                    <span className="syc-point__time">{formatDateTime(since_last_checked.baseline_observed_at)}</span>
-                  </div>
-                  <div className="syc-arrow">→</div>
-                  <div className="syc-point">
-                    <span className="syc-point__label">Current Market State</span>
-                    <span className="syc-point__price">₹{Number(since_last_checked.current_price).toFixed(2)}</span>
-                    <span className="syc-point__time">{formatDateTime(since_last_checked.current_observed_at)}</span>
-                  </div>
-                  <div className="syc-point syc-point--change">
-                    <span className="syc-point__label">Cumulative Movement</span>
-                    <span className={`syc-point__price ${sycIsUp ? 'val-positive' : sycIsDown ? 'val-negative' : 'val-neutral'}`}>
-                      {sycPct !== null ? `${sycIsUp ? '+' : ''}${sycPct.toFixed(2)}%` : '—'}
-                      {sycAbs !== null ? ` (${sycIsUp ? '+' : ''}₹${sycAbs.toFixed(2)})` : ''}
-                    </span>
-                    <span className="syc-point__time">{since_last_checked.tracking_note}</span>
-                  </div>
-                </div>
-
-                <div className="syc-score-banner">
-                  <div className="syc-score-banner__level">
-                    <span className={`attention-badge ${sycMeta.badgeClass}`}>
-                      {sycMeta.label}
-                    </span>
-                    <span className="attention-score-chip">
-                      Significance Score: {Number(since_last_checked.overall_score || 0).toFixed(2)} / 1.00
-                    </span>
-                  </div>
-                  <div className="syc-score-banner__status">
-                    {since_last_checked.is_reviewed ? (
-                      <span className="val-positive">
-                        Acknowledged {since_last_checked.reviewed_at ? `on ${formatDateTime(since_last_checked.reviewed_at)}` : ''}
-                      </span>
-                    ) : (
-                      <span className="unreviewed-tag">
-                        Unreviewed changes since baseline
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="syc-empty">
-                <strong>No user baseline recorded.</strong>
-                <p>
-                  You haven&apos;t marked this watchlist as checked yet. Return to the watchlist and click
-                  &quot;Mark as Checked&quot; to establish your reference baseline for {nse_symbol}.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Card: Market & Benchmark Context */}
-        <div className="stock-detail-card market-context-card">
-          <div className="stock-detail-card__header">
-            <div className="stock-detail-card__title">
-              <span>📊</span>
-              <span>Broad Market Context</span>
-            </div>
-            <span className="status-badge status-badge--final">{market_context?.benchmark_symbol}</span>
-          </div>
-
-          <div className="stock-detail-card__body">
-            <div className="market-context-grid">
-              <div className="context-metric">
-                <span className="context-metric__label">{nse_symbol} Return</span>
-                <span className={`context-metric__val ${sycIsUp ? 'val-positive' : sycIsDown ? 'val-negative' : 'val-neutral'}`}>
-                  {market_context?.stock_return !== null && market_context?.stock_return !== undefined
-                    ? `${market_context.stock_return > 0 ? '+' : ''}${market_context.stock_return.toFixed(2)}%`
-                    : '—'}
-                </span>
-              </div>
-              <div className="context-metric">
-                <span className="context-metric__label">{market_context?.benchmark_symbol} Return</span>
-                <span className="context-metric__val val-neutral">
-                  {market_context?.benchmark_return !== null && market_context?.benchmark_return !== undefined
-                    ? `${market_context.benchmark_return > 0 ? '+' : ''}${market_context.benchmark_return.toFixed(2)}%`
-                    : 'Unavailable'}
-                </span>
-              </div>
-              <div className="context-metric">
-                <span className="context-metric__label">Relative Excess Return</span>
-                <span className={`context-metric__val ${
-                  market_context?.excess_return && market_context.excess_return > 0 ? 'val-positive' :
-                  market_context?.excess_return && market_context.excess_return < 0 ? 'val-negative' : 'val-neutral'
-                }`}>
-                  {market_context?.excess_return !== null && market_context?.excess_return !== undefined
-                    ? `${market_context.excess_return > 0 ? '+' : ''}${market_context.excess_return.toFixed(2)} pts`
-                    : '—'}
-                </span>
-              </div>
-            </div>
-
-            <div className="market-context-summary">
-              {market_context?.context_summary}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Card: Why This Was Flagged / Evidence Breakdown */}
-      <div className="stock-detail-card evidence-card">
-        <div className="stock-detail-card__header">
-          <div className="stock-detail-card__title">
-            <span>🔬</span>
-            <span>Why This Was Flagged — Evidence Breakdown</span>
-          </div>
-          {evidenceMeta && (
-            <span className={`evidence-badge ${evidenceMeta.badgeClass}`} title={evidenceMeta.summary}>
-              {evidenceMeta.label}
-            </span>
-          )}
-        </div>
-
-        <div className="stock-detail-card__body">
-          {evidence ? (
-            <div className="evidence-body">
-              {/* Structured Narrative */}
-              <div className="evidence-narrative">
-                <div className="evidence-narrative__what">
-                  <strong>What Occurred:</strong> {evidence.structured_explanation?.what_happened || evidence.why_it_matters}
-                </div>
-                {evidence.structured_explanation?.why_it_stands_out && (
-                  <div className="evidence-narrative__stands-out">
-                    <strong>Why It Stands Out:</strong> {evidence.structured_explanation.why_it_stands_out}
-                  </div>
-                )}
-              </div>
-
-              {/* Supporting Evidence Bullets */}
-              {evidence.structured_explanation?.supporting_evidence && evidence.structured_explanation.supporting_evidence.length > 0 && (
-                <div className="evidence-bullets-box">
-                  <div className="evidence-bullets-box__title">Corroborating Market Evidence:</div>
-                  <ul className="evidence-bullets-list">
-                    {evidence.structured_explanation.supporting_evidence.map((bullet, idx) => (
-                      <li key={idx}>{bullet}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Component Score Contributions */}
-              {evidence.component_scores && (
-                <div className="evidence-components">
-                  <div className="evidence-components__title">Significance Formula Decomposition:</div>
-                  <div className="evidence-components__grid">
-                    <div className="component-pill">
-                      <span className="component-pill__name">Magnitude</span>
-                      <span className="component-pill__score">{Number(evidence.component_scores.magnitude ?? 0).toFixed(2)}</span>
-                      <span className="component-pill__weight">35%</span>
-                    </div>
-                    <div className="component-pill">
-                      <span className="component-pill__name">Abnormality</span>
-                      <span className="component-pill__score">{Number(evidence.component_scores.abnormality ?? 0).toFixed(2)}</span>
-                      <span className="component-pill__weight">30%</span>
-                    </div>
-                    <div className="component-pill">
-                      <span className="component-pill__name">Relative Perf</span>
-                      <span className="component-pill__score">{Number(evidence.component_scores.relative_performance ?? 0).toFixed(2)}</span>
-                      <span className="component-pill__weight">20%</span>
-                    </div>
-                    <div className="component-pill">
-                      <span className="component-pill__name">Volume</span>
-                      <span className="component-pill__score">{Number(evidence.component_scores.volume ?? 0).toFixed(2)}</span>
-                      <span className="component-pill__weight">15%</span>
-                    </div>
-                    <div className="component-pill">
-                      <span className="component-pill__name">Event</span>
-                      <span className="component-pill__score">{Number(evidence.component_scores.event ?? 0).toFixed(2)}</span>
-                      <span className="component-pill__weight">10%</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Transparent Missing Data Disclosures */}
-              {evidence.missing_data_notes && evidence.missing_data_notes.length > 0 && (
-                <div className="evidence-missing-notes">
-                  <div className="evidence-missing-notes__title">Data Completeness & Disclosures:</div>
-                  <div className="evidence-missing-tags">
-                    {evidence.missing_data_notes.map((note, idx) => (
-                      <span key={idx} className="missing-note-pill">
-                        ℹ {note}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="evidence-quiet-state">
-              <p>
-                <strong>No unusual signals detected for {nse_symbol}.</strong>
-              </p>
-              <p>
-                Price and volume action remained within normal historical variance relative to your baseline.
-                The significance score did not exceed the attention threshold (&lt; 0.20).
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Card: Supporting News Context (Marketaux) */}
-      <div className="stock-detail-card news-card">
-        <div className="stock-detail-card__header">
-          <div className="stock-detail-card__title">
-            <span>📰</span>
-            <span>Supporting News Context</span>
-          </div>
-          <span className="status-badge status-badge--final">Marketaux News</span>
-        </div>
-
-        <div className="stock-detail-card__body">
-          <div className="news-disclaimer">
-            ℹ <strong>Context only:</strong> External news published around this observation window. News context does not imply causality or investment advice.
-          </div>
-
-          {detail.relevant_news?.articles && detail.relevant_news.articles.length > 0 ? (
-            <div className="news-articles-list">
-              {detail.relevant_news.articles.map((art, idx) => (
-                <div key={art.id || art.provider_article_id || idx} className="news-article-item">
-                  <div className="news-article-item__main">
-                    <a
-                      href={art.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="news-article-title"
-                      title="Open original article in new tab"
-                    >
-                      {art.headline} ↗
-                    </a>
-                    {art.summary && (
-                      <div className="news-article-summary">{art.summary}</div>
-                    )}
-                    <div className="news-article-meta">
-                      <span className="news-source">{art.source}</span>
-                      <span>•</span>
-                      <span className="news-time">{formatDateTime(art.published_at)}</span>
-                      {art.relevance_summary && (
-                        <>
-                          <span>•</span>
-                          <span className="news-rel-pill">{art.relevance_summary}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="news-empty-state">
-              {detail.relevant_news?.note || 'No relevant news found around this change.'}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Card: Price & Volume Chart */}
-      <div className="stock-detail-card chart-card">
-        <div className="stock-detail-card__header">
-          <div className="stock-detail-card__title">
-            <span>📈</span>
-            <span>Price &amp; Volume Trajectory</span>
-          </div>
-          <span className="status-badge">{historical_series?.length || 0} Historical Sessions</span>
-        </div>
-
-        <div className="stock-detail-card__body">
-          <StockChart series={historical_series} symbol={nse_symbol} />
-        </div>
-      </div>
-
-      {/* Card: Change Timeline (Episodes) */}
-      <div className="stock-detail-card timeline-card-section">
-        <div className="stock-detail-card__header">
-          <div className="stock-detail-card__title">
-            <span>⏱️</span>
-            <span>Change Episodes &amp; Signal History</span>
-          </div>
-          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-            {timeline?.length || 0} Episode{timeline?.length === 1 ? '' : 's'}
-          </span>
-        </div>
-
-        <div className="stock-detail-card__body">
-          {timeline && timeline.length > 0 ? (
-            <div className="timeline-episodes-list">
-              {timeline.map((ep) => {
-                const epMeta = getAttentionLevelMeta(ep.significance_level);
-                const epPct = ep.percentage_change !== null && ep.percentage_change !== undefined
-                  ? Number(ep.percentage_change)
-                  : null;
-                const epIsUp = epPct !== null && epPct > 0;
-                const epIsDown = epPct !== null && epPct < 0;
-
-                return (
-                  <div key={ep.id} className={`episode-row ${ep.is_reviewed ? 'episode-row--reviewed' : ''}`}>
-                    <div className="episode-row__time">
-                      <div className="episode-time-end">{formatDateTime(ep.observation_end)}</div>
-                      {ep.observation_start && (
-                        <div className="episode-time-start">from {formatDateTime(ep.observation_start)}</div>
-                      )}
-                    </div>
-
-                    <div className="episode-row__content">
-                      <div className="episode-row__badges">
-                        <span className={`attention-badge ${epMeta.badgeClass}`}>{epMeta.label}</span>
-                        {ep.constituent_change_types.map((type, idx) => {
-                          const typeMeta = getChangeTypeMeta(type);
-                          return (
-                            <span key={idx} className={`change-badge ${typeMeta.badgeClass}`}>
-                              {typeMeta.label}
-                            </span>
-                          );
-                        })}
-                        <span className="attention-score-chip">
-                          Score: {Number(ep.overall_score || 0).toFixed(2)}
-                        </span>
-                        {ep.is_reviewed ? (
-                          <span className="review-status-badge review-status-badge--reviewed">
-                            ✓ Reviewed
-                          </span>
-                        ) : (
-                          <span className="unreviewed-tag">Surfaced</span>
-                        )}
-                      </div>
-
-                      <div className="episode-row__prices">
-                        <span>
-                          ₹{Number(ep.baseline_price || 0).toFixed(2)} → ₹{Number(ep.current_price || 0).toFixed(2)}
-                        </span>
-                        {epPct !== null && (
-                          <span className={`episode-change-tag ${epIsUp ? 'val-positive' : epIsDown ? 'val-negative' : 'val-neutral'}`}>
-                            {epIsUp ? '+' : ''}{epPct.toFixed(2)}%
-                          </span>
-                        )}
-                        {ep.volume && (
-                          <span className="episode-vol-tag">
-                            Vol: {Number(ep.volume).toLocaleString('en-IN')}
-                          </span>
-                        )}
-                      </div>
-
-                      {ep.evidence_bullets && ep.evidence_bullets.length > 0 && (
-                        <ul className="episode-row__bullets">
-                          {ep.evidence_bullets.map((b, bIdx) => (
-                            <li key={bIdx}>{b}</li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="timeline-empty">
-              <span>No change episodes recorded for {nse_symbol} yet.</span>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authViewOpen, setAuthViewOpen] = useState(false);
+  const [authMode, setAuthMode] = useState('login');
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [demoError, setDemoError] = useState(null);
+
   const [watchlists, setWatchlists] = useState([]);
   const [activeWatchlistId, setActiveWatchlistId] = useState(null);
   const [selectedStockId, setSelectedStockId] = useState(null);
@@ -946,6 +112,9 @@ function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState(null);
   const [error, setError] = useState(null);
+
+  // Attention feed filter
+  const [attentionFilter, setAttentionFilter] = useState('all'); // 'all' | 'high' | 'unreviewed'
 
   // New watchlist creation state
   const [newWatchlistName, setNewWatchlistName] = useState('');
@@ -1023,10 +192,69 @@ function App() {
     }
   }, []);
 
+  // Check auth session on startup
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token) {
+      setAuthLoading(false);
+      return;
+    }
+    fetchCurrentUser()
+      .then((user) => {
+        setCurrentUser(user);
+      })
+      .catch(() => {
+        clearAuthToken();
+        setCurrentUser(null);
+      })
+      .finally(() => {
+        setAuthLoading(false);
+      });
+
+    const onUnauthorized = () => {
+      clearAuthToken();
+      setCurrentUser(null);
+    };
+    window.addEventListener('auth:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', onUnauthorized);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+    } catch {
+      clearAuthToken();
+    }
+    setCurrentUser(null);
+    setWatchlists([]);
+    setActiveWatchlistId(null);
+    setSelectedStockId(null);
+    setMarketData(null);
+    setChangesData(null);
+    setAttentionData(null);
+    setAuthViewOpen(false);
+  };
+
+  const handleDemoLogin = async () => {
+    setDemoLoading(true);
+    setDemoError(null);
+    try {
+      const data = await loginUser('dev@example.com', 'password123');
+      setCurrentUser(data.user);
+      setAuthViewOpen(false);
+    } catch (err) {
+      setDemoError(err.message || 'Demo login failed. Make sure the backend server is running.');
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
   // Initial load
   useEffect(() => {
-    loadWatchlists();
-  }, [loadWatchlists]);
+    if (currentUser) {
+      loadWatchlists();
+    }
+  }, [currentUser, loadWatchlists]);
 
   // Whenever active watchlist changes, load market data, changes, and attention
   useEffect(() => {
@@ -1041,8 +269,10 @@ function App() {
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
+      setSearchResults([]);
       return;
     }
+
     const timer = setTimeout(async () => {
       try {
         const results = await searchInstruments(trimmed);
@@ -1235,27 +465,99 @@ function App() {
 
   const activeWatchlist = watchlists.find((w) => w.id === activeWatchlistId);
 
+  // Unauthenticated loading
+  if (authLoading) {
+    return (
+      <div className="beacon-loading-shell">
+        <div className="beacon-spinner" />
+        <p className="beacon-loading-text">Resolving session...</p>
+      </div>
+    );
+  }
+
+  // Unauthenticated visitor view
+  if (!currentUser) {
+    if (authViewOpen) {
+      return (
+        <AuthView
+          initialMode={authMode}
+          onLoginSuccess={(user) => {
+            setCurrentUser(user);
+            setAuthViewOpen(false);
+          }}
+          onBackToLanding={() => setAuthViewOpen(false)}
+        />
+      );
+    }
+    return (
+      <LandingPage
+        onOpenAuth={(mode) => {
+          setAuthMode(mode || 'login');
+          setAuthViewOpen(true);
+        }}
+        onDemoLogin={handleDemoLogin}
+        demoLoading={demoLoading}
+        demoError={demoError}
+      />
+    );
+  }
+
+  // Filter items for attention feed
+  const rawAttentionItems = attentionData?.items || attentionData?.attention_items || [];
+  const filteredAttentionItems = rawAttentionItems.filter((item) => {
+    if (attentionFilter === 'high') {
+      return item.significance_level === 'HIGH';
+    }
+    if (attentionFilter === 'unreviewed') {
+      return !item.is_reviewed;
+    }
+    return true;
+  });
+
   return (
-    <div className="app-shell">
-      {/* Header */}
-      <header className="header">
-        <div className="header__logo" aria-hidden="true">W</div>
-        <span className="header__title">Smart Market Watchlist</span>
-        <span className="header__badge">Dev User #1</span>
+    <div className="beacon-app-shell">
+      {/* Beacon Brand Header */}
+      <header className="beacon-header">
+        <div className="beacon-header__brand">
+          <div className="beacon-brand-mark" aria-hidden="true">
+            <span className="beacon-brand-dot" />
+          </div>
+          <div className="brand-text-wrap">
+            <span className="beacon-wordmark">BEACON</span>
+            <span className="beacon-header-tagline">Know what deserves your attention.</span>
+          </div>
+        </div>
+
+        <div className="beacon-header__user-block">
+          <div className="beacon-user-pill" title="Current authenticated account">
+            <span className="user-dot" />
+            <span className="user-label">{currentUser.name || currentUser.email}</span>
+          </div>
+          <button
+            type="button"
+            className="beacon-btn beacon-btn--ghost-sm"
+            onClick={handleLogout}
+            title="Log out of current session"
+          >
+            <LogOut size={13} style={{ marginRight: '5px' }} />
+            <span>Log Out</span>
+          </button>
+        </div>
       </header>
 
-      {/* Main workspace */}
-      <main className="main-content">
-        {/* Error notification */}
+      {/* Main Workspace */}
+      <main className="beacon-main">
+        {/* Error notification banner */}
         {error && (
-          <div className="alert alert-error" role="alert">
-            {error}
+          <div className="beacon-alert beacon-alert--error" role="alert">
+            <AlertCircle size={16} className="alert-icon" />
+            <span>{error}</span>
           </div>
         )}
 
         {/* Watchlist Bar: Tabs & Create Form */}
-        <section className="watchlist-bar" aria-label="Watchlist management">
-          <div className="watchlist-tabs" role="tablist" aria-label="Available watchlists">
+        <section className="beacon-watchlist-bar" aria-label="Watchlist management">
+          <div className="beacon-watchlist-tabs" role="tablist" aria-label="Available watchlists">
             {watchlists.length === 0 ? (
               <span className="val-neutral">No watchlists created yet. Create one to get started.</span>
             ) : (
@@ -1264,26 +566,32 @@ function App() {
                   key={wl.id}
                   role="tab"
                   aria-selected={wl.id === activeWatchlistId}
-                  className={`tab-button ${wl.id === activeWatchlistId ? 'tab-button--active' : ''}`}
+                  className={`beacon-wl-tab ${wl.id === activeWatchlistId ? 'beacon-wl-tab--active' : ''}`}
                   onClick={() => setActiveWatchlistId(wl.id)}
                 >
-                  {wl.name} ({wl.item_count})
+                  <span className="wl-name">{wl.name}</span>
+                  <span className="wl-count">{wl.item_count}</span>
                 </button>
               ))
             )}
           </div>
 
-          <form className="create-form" onSubmit={handleCreateWatchlist}>
+          <form className="beacon-create-form" onSubmit={handleCreateWatchlist}>
             <input
               type="text"
-              className="input-text"
+              className="beacon-input beacon-input--sm"
               placeholder="New watchlist name..."
               value={newWatchlistName}
               onChange={(e) => setNewWatchlistName(e.target.value)}
               aria-label="New watchlist name"
             />
-            <button type="submit" className="btn btn-primary" disabled={!newWatchlistName.trim()}>
-              Create
+            <button
+              type="submit"
+              className="beacon-btn beacon-btn--primary-sm"
+              disabled={!newWatchlistName.trim()}
+            >
+              <Plus size={13} style={{ marginRight: '4px' }} />
+              <span>Create</span>
             </button>
           </form>
         </section>
@@ -1306,154 +614,192 @@ function App() {
             }}
           />
         ) : activeWatchlist ? (
-          <section aria-label="Active watchlist view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-            {/* Header with Title and Actions */}
-            <div className="section-header">
-              <div>
-                <h2 className="section-title">{activeWatchlist.name}</h2>
+          <div className="beacon-workspace-stack">
+            {/* Active Watchlist Controls Bar */}
+            <div className="active-wl-toolbar">
+              <div className="toolbar-title-wrap">
+                <h2 className="active-wl-title">{activeWatchlist.name}</h2>
+                <span className="active-wl-meta">
+                  {marketData?.items?.length || 0} securities tracked
+                </span>
               </div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+
+              <div className="toolbar-actions">
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="beacon-btn beacon-btn--secondary"
                   onClick={handleRefreshMarketData}
                   disabled={refreshing}
-                  title="Ingest next chronological market observation session from NSE provider"
+                  title="Ingest next sequential market observation session from NSE"
                 >
-                  {refreshing ? '🔄 Ingesting...' : '🔄 Refresh Market Data'}
+                  <RefreshCw size={14} className={refreshing ? 'beacon-spin' : ''} style={{ marginRight: '6px' }} />
+                  <span>{refreshing ? 'Ingesting...' : 'Ingest Market Session'}</span>
                 </button>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="beacon-btn beacon-btn--secondary"
                   onClick={handleCheckForChanges}
                   disabled={loading}
-                  title="Detect changes and evaluate attention against your last checked baseline"
+                  title="Detect changes against your last checked baseline"
                 >
-                  {loading ? '🔍 Evaluating...' : '🔍 Check for Changes'}
+                  <Search size={14} style={{ marginRight: '6px' }} />
+                  <span>{loading ? 'Evaluating...' : 'Check for Changes'}</span>
                 </button>
                 <button
                   type="button"
-                  className="btn btn-check"
+                  className="beacon-btn beacon-btn--check"
                   onClick={handleCheckWatchlist}
                   disabled={checking}
-                  title="Acknowledge current market snapshot and advance baseline"
+                  title="Advance your observation baseline to the current market snapshot"
                 >
-                  {checking ? 'Updating...' : '✓ Mark as Checked'}
+                  <Check size={14} style={{ marginRight: '6px' }} />
+                  <span>{checking ? 'Advancing...' : 'Advance Baseline'}</span>
                 </button>
                 <button
                   type="button"
-                  className="btn btn-danger"
+                  className="beacon-btn beacon-btn--danger-icon"
                   onClick={() => handleDeleteWatchlist(activeWatchlist.id)}
+                  title="Delete Watchlist"
                 >
-                  Delete Watchlist
+                  <Trash2 size={14} />
                 </button>
               </div>
             </div>
 
-            {/* Refresh / Status Alert Banner */}
+            {/* Refresh / Status Banner */}
             {refreshMessage && (
-              <div className={`alert alert-${refreshMessage.type}`} role="status">
-                {refreshMessage.text}
+              <div className={`beacon-alert beacon-alert--${refreshMessage.type}`} role="status">
+                <CheckCircle2 size={16} className="alert-icon" />
+                <span>{refreshMessage.text}</span>
               </div>
             )}
 
-            {/* Last Checked Persisted State Banner */}
-            <div className="last-checked-banner">
-              <div className="last-checked-banner__info">
-                <span className={`last-checked-dot ${changesData?.last_checked_at ? '' : 'last-checked-dot--none'}`} />
-                <span>
-                  {changesData?.last_checked_at ? (
-                    <>
-                      <strong>Last checked:</strong> {formatDateTime(changesData.last_checked_at)}
-                    </>
-                  ) : (
-                    <span className="val-neutral">
-                      <strong>Last checked:</strong> Not checked yet (Click "Mark as Checked" to establish baseline)
+            {/* FOCAL CARD: "Since You Last Checked" (The Signature Beacon Experience) */}
+            <section className="beacon-focal-card" aria-label="Since you last checked focal summary">
+              <div className="focal-card-glow" />
+              <div className="focal-card-inner">
+                <div className="focal-card__top">
+                  <div className="focal-badge">
+                    <Sparkles size={13} style={{ color: 'var(--beacon-gold)', marginRight: '5px' }} />
+                    <span>SINCE YOU LAST CHECKED</span>
+                  </div>
+                  <div className="focal-timestamps">
+                    <div className="focal-time-item">
+                      <Clock size={12} style={{ marginRight: '4px' }} />
+                      <span>
+                        <strong>Baseline:</strong>{' '}
+                        {changesData?.last_checked_at
+                          ? formatDateTime(changesData.last_checked_at)
+                          : 'Not checked yet'}
+                      </span>
+                    </div>
+                    {marketData?.items?.[0]?.observed_at && (
+                      <>
+                        <span className="time-arrow">→</span>
+                        <div className="focal-time-item">
+                          <Activity size={12} style={{ marginRight: '4px' }} />
+                          <span>
+                            <strong>Current Market:</strong>{' '}
+                            {formatDateTime(marketData.items[0].observed_at)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="focal-card__stats">
+                  <div className="focal-stat-primary">
+                    <span className="stat-number">
+                      {attentionData?.summary?.attention_count ?? attentionData?.summary?.instruments_with_meaningful_changes ?? 0}
                     </span>
-                  )}
-                </span>
-              </div>
-              {changesData?.summary && (
-                <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                  {changesData.summary.instruments_with_changes} of {changesData.summary.total_instruments} instruments have candidate changes
-                </div>
-              )}
-            </div>
+                    <span className="stat-label">
+                      {(attentionData?.summary?.attention_count ?? 0) === 1 ? 'stock deserves' : 'stocks deserve'} your attention
+                    </span>
+                  </div>
 
-            {/* SECTION: Ranked Attention Feed (Milestone 3 Core) */}
-            <section className="attention-container" aria-label="Attention feed section">
-              <div className="attention-header">
-                <div className="attention-title">
-                  <span>🎯</span>
-                  <span>What Deserves Your Attention</span>
-                </div>
-                {attentionData?.summary && (
-                  <div className="attention-pills">
-                    {attentionData.summary.high_count > 0 && (
-                      <span className="pill-count pill-count--high">
-                        {attentionData.summary.high_count} High
+                  <div className="focal-stats-secondary">
+                    <div className="sec-stat-item">
+                      <span className="sec-number">
+                        {attentionData?.summary?.no_meaningful_change_count ?? attentionData?.summary?.instruments_without_meaningful_changes ?? 0}
                       </span>
+                      <span className="sec-label">stocks quiet / filtered as noise</span>
+                    </div>
+                    {attentionData?.summary?.unreviewed_count > 0 && (
+                      <div className="sec-stat-item sec-stat-item--unreviewed">
+                        <span className="sec-number">{attentionData.summary.unreviewed_count}</span>
+                        <span className="sec-label">unreviewed signals</span>
+                      </div>
                     )}
-                    {attentionData.summary.medium_count > 0 && (
-                      <span className="pill-count pill-count--medium">
-                        {attentionData.summary.medium_count} Medium
-                      </span>
-                    )}
-                    {attentionData.summary.low_count > 0 && (
-                      <span className="pill-count pill-count--low">
-                        {attentionData.summary.low_count} Low
-                      </span>
+                    {(attentionData?.summary?.insufficient_data_count ?? 0) > 0 && (
+                      <div className="sec-stat-item sec-stat-item--insufficient">
+                        <span className="sec-number">{attentionData.summary.insufficient_data_count}</span>
+                        <span className="sec-label">stocks need baseline</span>
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Attention Summary Bar */}
-              {attentionData?.summary && (
-                <div className="attention-summary-bar">
-                  <div className="attention-summary-bar__main">
-                    <strong>{attentionData.summary.attention_count ?? attentionData.summary.instruments_with_meaningful_changes}</strong> of{' '}
-                    <strong>{attentionData.summary.total_instruments}</strong> stocks deserve your attention based on market evidence.
-                    {attentionData.summary.unreviewed_count > 0 ? (
-                      <span className="unreviewed-tag">
-                        ({attentionData.summary.unreviewed_count} unreviewed)
-                      </span>
-                    ) : (attentionData.summary.attention_count > 0) ? (
-                      <span className="all-reviewed-tag">
-                        (✓ All reviewed)
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="attention-summary-bar__sub">
-                    {(attentionData.summary.no_meaningful_change_count ?? attentionData.summary.instruments_without_meaningful_changes) > 0 && (
-                      <span className="summary-quiet-text">
-                        {attentionData.summary.no_meaningful_change_count ?? attentionData.summary.instruments_without_meaningful_changes}{' '}
-                        {(attentionData.summary.no_meaningful_change_count ?? attentionData.summary.instruments_without_meaningful_changes) === 1 ? 'stock quiet' : 'stocks quiet'} (&lt; 0.20)
-                      </span>
-                    )}
-                    {(attentionData.summary.insufficient_data_count ?? 0) > 0 && (
-                      <span className="summary-insufficient-text">
-                        ⚠️ {attentionData.summary.insufficient_data_count} {attentionData.summary.insufficient_data_count === 1 ? 'stock lacks' : 'stocks lack'} baseline or data
-                      </span>
-                    )}
-                    {attentionData.summary.unreviewed_count > 0 && (
+                {/* Filter pills & Mark all reviewed action */}
+                <div className="focal-card__filter-bar">
+                  <div className="focal-filters" role="tablist">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={attentionFilter === 'all'}
+                      className={`focal-filter-btn ${attentionFilter === 'all' ? 'focal-filter-btn--active' : ''}`}
+                      onClick={() => setAttentionFilter('all')}
+                    >
+                      <Filter size={12} style={{ marginRight: '4px' }} />
+                      <span>All Deserving Attention ({rawAttentionItems.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={attentionFilter === 'high'}
+                      className={`focal-filter-btn ${attentionFilter === 'high' ? 'focal-filter-btn--active' : ''}`}
+                      onClick={() => setAttentionFilter('high')}
+                    >
+                      <span>High Priority ({attentionData?.summary?.high_count || 0})</span>
+                    </button>
+                    {attentionData?.summary?.unreviewed_count > 0 && (
                       <button
                         type="button"
-                        className="btn btn-review-all"
-                        onClick={handleReviewAll}
-                        title="Mark all surfaced changes across this watchlist as reviewed"
+                        role="tab"
+                        aria-selected={attentionFilter === 'unreviewed'}
+                        className={`focal-filter-btn ${attentionFilter === 'unreviewed' ? 'focal-filter-btn--active' : ''}`}
+                        onClick={() => setAttentionFilter('unreviewed')}
                       >
-                        ✓ Mark all as reviewed
+                        <span>Unreviewed Only ({attentionData.summary.unreviewed_count})</span>
                       </button>
                     )}
                   </div>
-                </div>
-              )}
 
-              {/* Attention Items Grid */}
-              {((attentionData?.items && attentionData.items.length > 0) || (attentionData?.attention_items && attentionData.attention_items.length > 0)) ? (
-                <div className="attention-feed-grid">
-                  {(attentionData.items || attentionData.attention_items).map((item) => {
+                  {attentionData?.summary?.unreviewed_count > 0 && (
+                    <button
+                      type="button"
+                      className="beacon-btn beacon-btn--ghost-sm btn-mark-all"
+                      onClick={handleReviewAll}
+                      title="Mark all surfaced changes across this watchlist as reviewed"
+                    >
+                      <Check size={13} style={{ marginRight: '4px' }} />
+                      <span>Mark all as reviewed</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* SECTION: Ranked Attention Feed */}
+            <section className="beacon-attention-feed" aria-label="Prioritized attention feed">
+              <div className="section-eyebrow">
+                <Shield size={14} style={{ marginRight: '6px' }} />
+                <span>WHAT DESERVES YOUR ATTENTION (RANKED BY EVIDENCE)</span>
+              </div>
+
+              {filteredAttentionItems.length > 0 ? (
+                <div className="attention-feed-cards">
+                  {filteredAttentionItems.map((item) => {
                     const meta = getAttentionLevelMeta(item.significance_level);
                     const evidenceMeta = getEvidenceCompletenessMeta(item.evidence_completeness);
                     const pct = item.percentage_change !== undefined && item.percentage_change !== null
@@ -1468,118 +814,130 @@ function App() {
                         : null);
                     const isUp = pct !== null ? pct > 0 : false;
                     const isDown = pct !== null ? pct < 0 : false;
-                    const structured = item.structured_explanation;
+                    const instId = item.instrument_id || item.instrument?.id;
 
                     return (
-                      <div key={item.instrument_id || item.instrument?.id} className={`attention-card ${meta.cardClass}`}>
-                        <div className="attention-card__top">
-                          <div>
-                            <div
-                              className="attention-card__symbol clickable-symbol"
-                              onClick={() => setSelectedStockId(item.instrument_id || item.instrument?.id)}
-                              title="Click to view detailed stock analysis, timeline, and evidence"
-                            >
-                              {item.symbol} ↗
-                            </div>
-                            <div className="attention-card__company">{item.company_name}</div>
-                          </div>
-                          <div className="attention-card__badges">
+                      <div key={instId} className={`beacon-attention-card ${meta.cardClass}`}>
+                        {/* Top Header: Symbol, Badges, Review */}
+                        <div className="card-top-row">
+                          <div className="stock-identity-group">
                             <button
                               type="button"
-                              className="btn btn-secondary btn-detail-sm"
-                              onClick={() => setSelectedStockId(item.instrument_id || item.instrument?.id)}
-                              title="Inspect full details, timeline, and evidence"
+                              className="symbol-link-btn"
+                              onClick={() => setSelectedStockId(instId)}
+                              title="Click to view full stock detail and change timeline"
                             >
-                              Inspect
+                              <span className="symbol-text">{item.symbol}</span>
+                              <ArrowUpRight size={14} className="arrow-icon" />
                             </button>
+                            <span className="company-text">{item.company_name}</span>
+                          </div>
+
+                          <div className="card-badges-group">
                             <span className={`attention-badge ${meta.badgeClass}`}>{meta.label}</span>
                             {evidenceMeta && (
-                              <span
-                                className={`evidence-badge ${evidenceMeta.badgeClass}`}
-                                title={evidenceMeta.summary}
-                              >
+                              <span className={`evidence-badge ${evidenceMeta.badgeClass}`} title={evidenceMeta.summary}>
                                 {evidenceMeta.label}
                               </span>
                             )}
-                            <span className="attention-score-chip" title="Overall Significance Score (0.0 to 1.0)">
+                            <span className="score-chip" title="Multi-factor Significance Score (0.0 to 1.0)">
                               Score: {Number(item.overall_score).toFixed(2)}
                             </span>
+
                             {item.is_reviewed ? (
-                              <span
-                                className="review-status-badge review-status-badge--reviewed"
-                                title={item.reviewed_at ? `Reviewed on ${formatDateTime(item.reviewed_at)}` : 'Reviewed'}
-                              >
-                                ✓ Reviewed
+                              <span className="review-tag review-tag--reviewed" title="Reviewed">
+                                <Check size={11} style={{ marginRight: '3px' }} />
+                                Reviewed
                               </span>
                             ) : (
                               <button
                                 type="button"
-                                className="btn btn-review-sm"
-                                onClick={() => handleReviewInstrument(item.instrument_id || item.instrument?.id)}
-                                title="Mark changes for this stock as reviewed"
+                                className="beacon-btn beacon-btn--review-sm"
+                                onClick={() => handleReviewInstrument(instId)}
+                                title="Mark all changes for this stock as reviewed"
                               >
-                                Mark as reviewed
+                                <Check size={12} style={{ marginRight: '3px' }} />
+                                <span>Mark Reviewed</span>
                               </button>
                             )}
+
+                            <button
+                              type="button"
+                              className="beacon-btn beacon-btn--inspect-sm"
+                              onClick={() => setSelectedStockId(instId)}
+                              title="Inspect full details, timeline, and evidence"
+                            >
+                              <span>Inspect</span>
+                              <ChevronRight size={13} />
+                            </button>
                           </div>
                         </div>
 
-                        {/* Structured Explanation: What Happened & Why it Stands Out */}
-                        <div className="attention-narrative">
-                          <div className="attention-what-happened">
-                            {structured?.what_happened || item.explanation}
+                        {/* Price & Movement Row */}
+                        <div className="card-metrics-row">
+                          <div className="metric-box">
+                            <span className="metric-box__label">Current Price</span>
+                            <span className="metric-box__val">₹{Number(item.current_price).toFixed(2)}</span>
                           </div>
-                          {structured?.why_it_stands_out && (
-                            <div className="attention-why-stands-out">
-                              {structured.why_it_stands_out}
-                            </div>
+                          <div className="metric-box">
+                            <span className="metric-box__label">Change Since Check</span>
+                            <span className={`metric-box__val ${isUp ? 'val-positive' : isDown ? 'val-negative' : 'val-neutral'}`}>
+                              {isUp ? <TrendingUp size={13} style={{ marginRight: '3px', verticalAlign: '-1px' }} /> : isDown ? <TrendingDown size={13} style={{ marginRight: '3px', verticalAlign: '-1px' }} /> : null}
+                              {pct !== null ? `${isUp ? '+' : ''}${pct.toFixed(2)}%` : '—'}
+                              {abs !== null ? ` (${isUp ? '+' : ''}₹${abs.toFixed(2)})` : ''}
+                            </span>
+                          </div>
+                          <div className="metric-box">
+                            <span className="metric-box__label">Baseline Price</span>
+                            <span className="metric-box__val val-muted">₹{Number(item.baseline_price).toFixed(2)}</span>
+                          </div>
+                        </div>
+
+                        {/* "Why This Matters" Explanation */}
+                        <div className="card-explanation-box">
+                          <div className="explanation-headline">
+                            <Sparkles size={13} style={{ color: 'var(--beacon-gold)', marginRight: '5px' }} />
+                            <strong>Why this deserves attention:</strong>
+                          </div>
+                          <p className="explanation-paragraph">
+                            {item.structured_explanation?.what_happened || item.explanation || item.why_it_matters}
+                          </p>
+                          {item.structured_explanation?.why_it_stands_out && (
+                            <p className="explanation-stands-out">
+                              {item.structured_explanation.why_it_stands_out}
+                            </p>
+                          )}
+
+                          {item.evidence_bullets && item.evidence_bullets.length > 0 && (
+                            <ul className="evidence-bullet-list">
+                              {item.evidence_bullets.map((b, bIdx) => (
+                                <li key={bIdx}>{b}</li>
+                              ))}
+                            </ul>
                           )}
                         </div>
 
-                        {/* Supporting Evidence Bullets */}
-                        {structured?.supporting_evidence && structured.supporting_evidence.length > 0 && (
-                          <div className="attention-evidence-block">
-                            <div className="attention-evidence-block__title">Corroborating Evidence:</div>
-                            <ul className="attention-evidence-list">
-                              {structured.supporting_evidence.map((bullet, idx) => (
-                                <li key={idx} className="attention-evidence-bullet">
-                                  {bullet}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Missing Data Disclosures */}
-                        {structured?.missing_data_notes && structured.missing_data_notes.length > 0 && (
-                          <div className="attention-missing-notes">
-                            {structured.missing_data_notes.map((note, idx) => (
-                              <span key={idx} className="missing-note-pill">
-                                ℹ {note}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Supporting News Context Block (Marketaux) */}
+                        {/* Contextual Marketaux News Preview if available */}
                         {item.relevant_news?.articles && item.relevant_news.articles.length > 0 && (
-                          <div className="attention-news-block">
-                            <div className="attention-news-block__title">
-                              <span>📰 Potentially relevant news around this move:</span>
+                          <div className="card-news-context">
+                            <div className="news-context-head">
+                              <BookOpen size={12} style={{ marginRight: '5px' }} />
+                              <span>Relevant Marketaux News Context</span>
                             </div>
-                            <div className="attention-news-list">
-                              {item.relevant_news.articles.map((art, aIdx) => (
-                                <div key={aIdx} className="attention-news-item">
+                            <div className="news-articles-wrap">
+                              {item.relevant_news.articles.slice(0, 2).map((art, aIdx) => (
+                                <div key={aIdx} className="news-item-row">
                                   <a
                                     href={art.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="attention-news-title"
-                                    title="Open original article in new tab"
+                                    className="news-item-link"
+                                    title="Read article on original publisher"
                                   >
-                                    {art.headline} ↗
+                                    <span>{art.headline}</span>
+                                    <ExternalLink size={11} className="ext-icon" />
                                   </a>
-                                  <div className="attention-news-meta">
+                                  <div className="news-item-meta">
                                     <span>{art.source}</span>
                                     <span>•</span>
                                     <span>{formatDateTime(art.published_at)}</span>
@@ -1590,223 +948,111 @@ function App() {
                           </div>
                         )}
 
-                        {/* Collapsible Details & Provenance Accordion */}
-                        <details className="attention-details">
-                          <summary className="attention-details__summary">
-                            <span>Why did this surface? / Details &amp; Provenance</span>
+                        {/* Collapsible Provenance & Diagnostic Accordion */}
+                        <details className="card-details-accordion">
+                          <summary className="accordion-summary">
+                            <span>Diagnostic Breakdown &amp; Provenance</span>
                           </summary>
-                          <div className="attention-details__content">
-                            {/* Baseline vs Current */}
-                            <div className="details-metrics-row">
-                              <div className="details-metric">
-                                <span className="details-metric__label">Baseline Observation</span>
-                                <span className="details-metric__val">₹{Number(item.baseline_price).toFixed(2)}</span>
-                                <span className="details-metric__sub">{formatDateTime(item.baseline_timestamp || item.baseline_observed_at)}</span>
+                          <div className="accordion-body">
+                            <div className="provenance-metric-grid">
+                              <div className="prov-item">
+                                <span className="prov-label">Magnitude Factor (35%)</span>
+                                <span className="prov-val">{Number(item.component_scores?.magnitude ?? 0).toFixed(2)}</span>
                               </div>
-                              <div className="details-metric-arrow">→</div>
-                              <div className="details-metric">
-                                <span className="details-metric__label">Current Observation</span>
-                                <span className="details-metric__val">₹{Number(item.current_price).toFixed(2)}</span>
-                                <span className="details-metric__sub">{formatDateTime(item.current_timestamp || item.current_observed_at)}</span>
+                              <div className="prov-item">
+                                <span className="prov-label">Abnormality Factor (30%)</span>
+                                <span className="prov-val">{Number(item.component_scores?.abnormality ?? 0).toFixed(2)}</span>
                               </div>
-                              <div className="details-metric">
-                                <span className="details-metric__label">Net Change</span>
-                                <span className={`details-metric__val ${isUp ? 'val-positive' : isDown ? 'val-negative' : 'val-neutral'}`}>
-                                  {pct !== null ? `${isUp ? '+' : ''}${pct.toFixed(2)}%` : '—'}
-                                  {abs !== null ? ` (${isUp ? '+' : ''}₹${abs.toFixed(2)})` : ''}
-                                </span>
+                              <div className="prov-item">
+                                <span className="prov-label">Relative Perf (20%)</span>
+                                <span className="prov-val">{Number(item.component_scores?.relative_performance ?? 0).toFixed(2)}</span>
+                              </div>
+                              <div className="prov-item">
+                                <span className="prov-label">Volume Anomaly (15%)</span>
+                                <span className="prov-val">{Number(item.component_scores?.volume ?? 0).toFixed(2)}</span>
                               </div>
                             </div>
 
-                            {/* Component Score Contributions */}
-                            <div className="component-scores-row">
-                              <span style={{ fontWeight: '600', color: 'var(--color-text-primary)' }}>Component Scores:</span>
-                              <span className="component-score-tag">
-                                Magnitude: {item.component_scores?.magnitude !== null && item.component_scores?.magnitude !== undefined ? Number(item.component_scores.magnitude).toFixed(2) : 'N/A'} (w=35%)
-                              </span>
-                              <span className="component-score-tag">
-                                Abnormality: {item.component_scores?.abnormality !== null && item.component_scores?.abnormality !== undefined ? Number(item.component_scores.abnormality).toFixed(2) : 'N/A'} (w=30%)
-                              </span>
-                              <span className="component-score-tag">
-                                Relative: {item.component_scores?.relative_performance !== null && item.component_scores?.relative_performance !== undefined ? Number(item.component_scores.relative_performance).toFixed(2) : 'N/A'} (w=20%)
-                              </span>
-                              <span className="component-score-tag">
-                                Volume: {item.component_scores?.volume !== null && item.component_scores?.volume !== undefined ? Number(item.component_scores.volume).toFixed(2) : 'N/A'} (w=15%)
-                              </span>
-                              <span className="component-score-tag">
-                                Event: {item.component_scores?.event !== null && item.component_scores?.event !== undefined ? Number(item.component_scores.event).toFixed(2) : '0.00'} (w=10%)
-                              </span>
-                            </div>
-
-                            {/* Underlying Candidate Changes with Individual Review */}
                             {item.changes && item.changes.length > 0 && (
-                              <div className="details-changes-block">
-                                <div style={{ fontWeight: '600', fontSize: '0.75rem', color: 'var(--color-text-primary)' }}>
-                                  Underlying Signals Grouped in Episode:
-                                </div>
-                                <div className="details-changes-grid">
+                              <div className="underlying-signals-section">
+                                <div className="signals-title">Underlying Signals Grouped in Episode:</div>
+                                <div className="signals-grid">
                                   {item.changes.map((ch) => (
-                                    <div key={ch.id} className="underlying-change-row">
-                                      <span className="constituent-tag">{ch.change_type}</span>
-                                      <span className="underlying-change-status">
-                                        {ch.review_status === 'reviewed' ? (
-                                          <span className="val-positive" style={{ fontSize: '0.7rem', fontWeight: '600' }}>✓ Reviewed</span>
-                                        ) : (
-                                          <button
-                                            type="button"
-                                            className="btn btn-review-xs"
-                                            onClick={() => handleReviewChange(ch.id)}
-                                            title="Mark this signal as reviewed"
-                                          >
-                                            Review
-                                          </button>
-                                        )}
-                                      </span>
+                                    <div key={ch.id} className="signal-chip-row">
+                                      <span className="signal-badge">{ch.change_type}</span>
+                                      {ch.review_status === 'reviewed' ? (
+                                        <span className="review-tag review-tag--reviewed">Reviewed</span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="beacon-btn beacon-btn--review-xs"
+                                          onClick={() => handleReviewChange(ch.id)}
+                                        >
+                                          Review
+                                        </button>
+                                      )}
                                     </div>
                                   ))}
                                 </div>
                               </div>
                             )}
 
-                            {/* Freshness & Provenance */}
-                            <div className="details-freshness">
-                              {item.freshness_note || `Based on ${item.source || 'NSE'} market data through ${formatDateTime(item.current_timestamp || item.current_observed_at)}.`}
+                            <div className="prov-footer">
+                              <span>Tracking: {formatDateTime(item.baseline_timestamp || item.baseline_observed_at)} → {formatDateTime(item.current_timestamp || item.current_observed_at)}</span>
+                              <span>Source: {item.source || 'NSE'} &bull; Status: {item.data_status || 'verified'}</span>
                             </div>
                           </div>
                         </details>
-
-                        {/* Card Footer */}
-                        <div className="attention-card__footer">
-                          <div>
-                            Tracking period: {formatDateTime(item.baseline_timestamp || item.baseline_observed_at)} to {formatDateTime(item.current_timestamp || item.current_observed_at)}
-                          </div>
-                          <span className="status-badge status-badge--final">
-                            {item.source} • {item.data_status}
-                          </span>
-                        </div>
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <div className="changes-empty">
-                  {attentionData?.last_checked_at ? (
+                <div className="beacon-empty-card">
+                  <CheckCircle2 size={24} style={{ color: 'var(--beacon-gold)', marginBottom: '8px' }} />
+                  {attentionFilter === 'high' ? (
                     <div>
-                      <strong>All caught up!</strong> None of the stocks in this watchlist showed meaningful changes since you last checked ({formatDateTime(attentionData.last_checked_at)}). Any price movements remained within normal variance.
+                      <strong>No high-priority attention items.</strong> All detected movements in this watchlist are medium, low, or within expected variance.
+                    </div>
+                  ) : attentionFilter === 'unreviewed' ? (
+                    <div>
+                      <strong>All caught up!</strong> Every surfaced signal across this watchlist has been reviewed.
+                    </div>
+                  ) : attentionData?.last_checked_at ? (
+                    <div>
+                      <strong>No attention needed.</strong> All {attentionData?.summary?.total_instruments || 'active'} stocks in this watchlist remained within normal variance since you last checked ({formatDateTime(attentionData.last_checked_at)}).
                     </div>
                   ) : (
                     <div>
-                      <strong>No baseline established yet.</strong> Click <strong>"Mark as Checked"</strong> above to record your market observation baseline.
+                      <strong>No baseline established yet.</strong> Click <strong>&quot;Advance Baseline&quot;</strong> above to record your market reference state.
                     </div>
                   )}
                 </div>
               )}
 
-              {/* SECTION: Chronological Change Feed / Timeline View */}
-              {attentionData?.feed_items && attentionData.feed_items.length > 0 && (
-                <div className="timeline-section" aria-label="Chronological changes timeline">
-                  <div className="timeline-header">
-                    <div className="timeline-title">
-                      <span>⏱️</span>
-                      <span>Chronological Change Feed</span>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
-                      {attentionData.feed_items.length} detected event{attentionData.feed_items.length === 1 ? '' : 's'}
-                    </div>
-                  </div>
-
-                  <div className="timeline-list">
-                    {attentionData.feed_items.map((feedItem) => {
-                      const typeMeta = getChangeTypeMeta(feedItem.change_type);
-                      const levelMeta = getAttentionLevelMeta(feedItem.significance_level);
-                      return (
-                        <div key={feedItem.id} className={`timeline-card ${feedItem.is_reviewed ? 'timeline-card--reviewed' : ''}`}>
-                          <div className="timeline-card__time">
-                            {formatDateTime(feedItem.timestamp)}
-                          </div>
-                          <div className="timeline-card__body">
-                            <div className="timeline-card__top">
-                              <div className="timeline-card__stock">
-                                <strong
-                                  className="clickable-symbol"
-                                  onClick={() => setSelectedStockId(feedItem.instrument_id)}
-                                  title="Click to view detailed stock analysis"
-                                >
-                                  {feedItem.symbol} ↗
-                                </strong>
-                                <span className="timeline-card__company">{feedItem.company_name}</span>
-                              </div>
-                              <div className="timeline-card__badges">
-                                <span className={`change-badge ${typeMeta.badgeClass}`}>{typeMeta.label}</span>
-                                <span className={`attention-badge ${levelMeta.badgeClass}`}>{levelMeta.label}</span>
-                                <span className="attention-score-chip">Score: {Number(feedItem.overall_score).toFixed(2)}</span>
-                                {feedItem.is_reviewed ? (
-                                  <span className="review-status-badge review-status-badge--reviewed">
-                                    ✓ Reviewed
-                                  </span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="btn btn-review-xs"
-                                    onClick={() => handleReviewChange(feedItem.id)}
-                                  >
-                                    Mark reviewed
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="timeline-card__metrics">
-                              {feedItem.metrics_summary}
-                            </div>
-
-                            {feedItem.explanation && (
-                              <div className="timeline-card__explanation">
-                                {feedItem.explanation}
-                              </div>
-                            )}
-
-                            {feedItem.evidence_bullets && feedItem.evidence_bullets.length > 0 && (
-                              <ul className="timeline-card__bullets">
-                                {feedItem.evidence_bullets.map((b, idx) => (
-                                  <li key={idx}>{b}</li>
-                                ))}
-                              </ul>
-                            )}
-
-                            <div className="timeline-card__footer">
-                              <span>Tracking: {formatDateTime(feedItem.baseline_observed_at)} → {formatDateTime(feedItem.current_observed_at)}</span>
-                              <span>{feedItem.source} • {feedItem.data_status}</span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Quiet disclosure: Stocks evaluated without meaningful changes */}
+              {/* Quiet Stocks Disclosure */}
               {((attentionData?.summary?.no_meaningful_change_count ?? attentionData?.summary?.instruments_without_meaningful_changes) > 0) && (
-                <details className="quiet-panel">
-                  <summary>
-                    Quiet stocks ({attentionData.summary.no_meaningful_change_count ?? attentionData.summary.instruments_without_meaningful_changes} stocks had no meaningful changes)
+                <details className="beacon-quiet-panel">
+                  <summary className="quiet-summary">
+                    <span>Quiet stocks ({attentionData.summary.no_meaningful_change_count ?? attentionData.summary.instruments_without_meaningful_changes} stocks with changes below 0.20 threshold)</span>
                   </summary>
-                  <div className="quiet-panel__content">
-                    <p>
-                      These stocks were evaluated against your baseline. Their movements were either nonexistent, negligible, or within normal historical variance and did not meet the attention threshold (Score &lt; 0.20).
+                  <div className="quiet-content">
+                    <p className="quiet-explainer">
+                      These stocks were evaluated against your baseline. Their movements were either nonexistent or well within normal statistical variance. Beacon suppressed them to protect your focus.
                     </p>
                     {attentionData.quiet_instruments && attentionData.quiet_instruments.length > 0 && (
-                      <div className="quiet-instruments-tags">
+                      <div className="quiet-tags-list">
                         {attentionData.quiet_instruments.map((q) => (
-                          <span
+                          <button
                             key={q.instrument_id}
-                            className="quiet-tag clickable-tag"
+                            type="button"
+                            className="quiet-tag-btn"
                             onClick={() => setSelectedStockId(q.instrument_id)}
                             title={`${q.reason} — Click to inspect detail`}
                           >
-                            {q.symbol} ↗
-                          </span>
+                            <span>{q.symbol}</span>
+                            <ArrowUpRight size={11} />
+                          </button>
                         ))}
                       </div>
                     )}
@@ -1814,27 +1060,29 @@ function App() {
                 </details>
               )}
 
-              {/* Insufficient Data disclosure */}
+              {/* Insufficient Data Disclosure */}
               {(attentionData?.summary?.insufficient_data_count > 0) && (
-                <details className="insufficient-panel">
-                  <summary>
-                    ⚠️ Insufficient data ({attentionData.summary.insufficient_data_count} stocks need baseline or data)
+                <details className="beacon-insufficient-panel">
+                  <summary className="insufficient-summary">
+                    <Info size={13} style={{ marginRight: '6px', color: 'var(--beacon-gold)' }} />
+                    <span>Insufficient data ({attentionData.summary.insufficient_data_count} stocks need baseline or data)</span>
                   </summary>
-                  <div className="insufficient-panel__content">
-                    <p>
-                      These instruments lack a recorded user observation baseline or sufficient historical data. Click &quot;Mark as Checked&quot; above to establish a baseline for tracking.
+                  <div className="insufficient-content">
+                    <p className="quiet-explainer">
+                      These instruments lack a recorded user observation baseline or sufficient historical data. Click &quot;Advance Baseline&quot; above to establish a baseline for tracking.
                     </p>
                     {attentionData.insufficient_data_instruments && attentionData.insufficient_data_instruments.length > 0 && (
                       <ul className="insufficient-list">
                         {attentionData.insufficient_data_instruments.map((ins) => (
                           <li key={ins.instrument_id}>
-                            <strong
-                              className="clickable-symbol"
+                            <button
+                              type="button"
+                              className="symbol-text-btn"
                               onClick={() => setSelectedStockId(ins.instrument_id)}
-                              title="Click to inspect detail"
                             >
-                              {ins.symbol} ↗
-                            </strong> ({ins.company_name}): {ins.reason}
+                              {ins.symbol}
+                            </button>{' '}
+                            <span className="ins-name">({ins.company_name})</span>: {ins.reason}
                           </li>
                         ))}
                       </ul>
@@ -1844,120 +1092,73 @@ function App() {
               )}
             </section>
 
-            {/* Technical Diagnostics & Candidate Changes Disclosure */}
-            {changesData?.changes && changesData.changes.length > 0 && (
-              <details className="diagnostics-panel">
-                <summary>Underlying candidate detections ({changesData.changes.length} raw changes detected)</summary>
-                <div className="changes-grid" style={{ marginTop: 'var(--space-3)' }}>
-                  {changesData.changes.map((item) => {
-                    const meta = getChangeTypeMeta(item.change_type);
-                    return (
-                      <div key={item.id} className="change-card">
-                        <div className="change-card__head">
-                          <div>
-                            <div className="change-card__symbol">{item.symbol}</div>
-                            <div className="change-card__company">{item.company_name}</div>
-                          </div>
-                          <span className={`change-badge ${meta.badgeClass}`}>{meta.label}</span>
-                        </div>
-                        <div className="change-card__comparison">
-                          <div>Baseline: ₹{Number(item.baseline_price).toFixed(2)}</div>
-                          <div>Current: ₹{Number(item.current_price).toFixed(2)}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
+            {/* SECTION: Compact Watchlist Table */}
+            <section className="beacon-table-section" aria-label="Current watchlist market snapshot">
+              <div className="table-section-head">
+                <div className="section-eyebrow">
+                  <Activity size={14} style={{ marginRight: '6px' }} />
+                  <span>WATCHLIST INSTRUMENTS ({marketData?.items?.length || 0})</span>
                 </div>
-              </details>
-            )}
 
-            {/* Data Freshness & Diagnostics disclosure */}
-            {changesData?.instrument_statuses && changesData.instrument_statuses.length > 0 && (
-              <details className="diagnostics-panel">
-                <summary>Data freshness & detection diagnostics ({changesData.instrument_statuses.length} instruments evaluated)</summary>
-                <ul className="diagnostics-list">
-                  {changesData.instrument_statuses.map((s) => (
-                    <li key={s.instrument_id}>
-                      <strong>{s.symbol}</strong>: Status: <code>{s.status}</code>
-                      {s.diagnostics?.message && <span> &mdash; {s.diagnostics.message}</span>}
-                      {s.diagnostics?.abnormal_return && (
-                        <span> (Abnormal return: {s.diagnostics.abnormal_return.status})</span>
-                      )}
-                      {s.diagnostics?.relative_performance && (
-                        <span> (Relative perf: {s.diagnostics.relative_performance.status})</span>
-                      )}
-                      {s.diagnostics?.volume_anomaly && (
-                        <span> (Volume: {s.diagnostics.volume_anomaly.status})</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            )}
-
-            {/* Add Instrument Search Bar */}
-            <div>
-              <div className="search-box">
-                <input
-                  type="text"
-                  className="input-text"
-                  placeholder="Search 30+ NSE stocks (e.g., TATAMOTORS, BHARTIARTL, ITC, TCS)..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  aria-label="Search instruments"
-                />
-                {searchResults.length > 0 && (
-                  <div className="search-results" role="listbox">
-                    {searchResults.map((inst) => {
-                      const alreadyInList = marketData?.items?.some(
-                        (it) => it.instrument_id === inst.id
-                      );
-                      return (
-                        <div
-                          key={inst.id}
-                          className="search-item"
-                          onClick={() => !alreadyInList && handleAddInstrument(inst)}
-                        >
-                          <div>
-                            <div className="search-item__symbol">{inst.nse_symbol}</div>
-                            <div className="search-item__name">{inst.company_name}</div>
+                {/* Search & Add Bar */}
+                <div className="table-search-bar">
+                  <Search size={14} className="search-icon" />
+                  <input
+                    type="text"
+                    className="beacon-input beacon-input--search"
+                    placeholder="Search 1,200+ NSE stocks (e.g. TATAMOTORS, BHARTIARTL, ITC)..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    aria-label="Search NSE instruments"
+                  />
+                  {searchResults.length > 0 && (
+                    <div className="search-results-dropdown" role="listbox">
+                      {searchResults.map((inst) => {
+                        const alreadyInList = marketData?.items?.some(
+                          (it) => it.instrument_id === inst.id
+                        );
+                        return (
+                          <div
+                            key={inst.id}
+                            className="search-dropdown-item"
+                            onClick={() => !alreadyInList && handleAddInstrument(inst)}
+                          >
+                            <div className="item-details">
+                              <span className="item-symbol">{inst.nse_symbol}</span>
+                              <span className="item-name">{inst.company_name}</span>
+                            </div>
+                            {alreadyInList ? (
+                              <span className="status-badge">Added</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="beacon-btn beacon-btn--primary-xs"
+                              >
+                                <Plus size={11} style={{ marginRight: '2px' }} />
+                                Add
+                              </button>
+                            )}
                           </div>
-                          {alreadyInList ? (
-                            <span className="status-badge">Added</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                            >
-                              Add
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* SECTION: Current Watchlist Market Snapshot */}
-            <section aria-label="Current market snapshot">
-              <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: 'var(--space-2)' }}>
-                Current Watchlist Snapshot
-              </h3>
-              <div className="table-container">
+              {/* Scannable Compact Table */}
+              <div className="beacon-table-wrap">
                 {marketData?.items && marketData.items.length > 0 ? (
-                  <table className="market-table">
+                  <table className="beacon-market-table">
                     <thead>
                       <tr>
                         <th>Instrument</th>
                         <th>Latest Price</th>
-                        <th>Change</th>
+                        <th>Session Change</th>
                         <th>% Change</th>
-                        <th>Volume</th>
-                        <th>Observed At / Source</th>
-                        <th>Actions</th>
+                        <th>Session Volume</th>
+                        <th>Observation Time</th>
+                        <th style={{ textAlign: 'right' }}>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1968,22 +1169,26 @@ function App() {
                         const isDown = hasChange && Number(item.absolute_change) < 0;
 
                         return (
-                          <tr key={item.instrument_id}>
+                          <tr key={item.instrument_id} className="table-row-interactive">
                             <td>
-                              <div
-                                className="stock-symbol clickable-symbol"
+                              <button
+                                type="button"
+                                className="table-symbol-btn"
                                 onClick={() => setSelectedStockId(item.instrument_id)}
-                                title="Click to view full stock detail and change timeline"
+                                title="Click to view full detail"
                               >
-                                {item.symbol} ↗
-                              </div>
-                              <div className="stock-name">{item.company_name}</div>
+                                <strong>{item.symbol}</strong>
+                                <ArrowUpRight size={11} className="arrow-icon" />
+                              </button>
+                              <div className="table-company-name">{item.company_name}</div>
                             </td>
                             <td>
                               {hasPrice ? (
-                                <strong>₹{Number(item.latest_price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                                <span className="price-bold">
+                                  ₹{Number(item.latest_price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                                </span>
                               ) : (
-                                <span className="val-neutral">— Not observed yet</span>
+                                <span className="val-neutral">—</span>
                               )}
                             </td>
                             <td>
@@ -1997,7 +1202,7 @@ function App() {
                             </td>
                             <td>
                               {item.percentage_change !== null && item.percentage_change !== undefined ? (
-                                <span className={isUp ? 'val-positive' : isDown ? 'val-negative' : 'val-neutral'}>
+                                <span className={`table-pct-badge ${isUp ? 'pct-badge--up' : isDown ? 'pct-badge--down' : ''}`}>
                                   {isUp ? '+' : ''}{Number(item.percentage_change).toFixed(2)}%
                                 </span>
                               ) : (
@@ -2006,39 +1211,38 @@ function App() {
                             </td>
                             <td>
                               {item.volume !== null && item.volume !== undefined ? (
-                                item.volume.toLocaleString('en-IN')
+                                <span className="vol-text">{Number(item.volume).toLocaleString('en-IN')}</span>
                               ) : (
                                 <span className="val-neutral">—</span>
                               )}
                             </td>
                             <td>
                               {item.observed_at ? (
-                                <div>
+                                <div className="table-obs-time">
                                   <div>{formatDateTime(item.observed_at)}</div>
                                   <span className="status-badge status-badge--final">
-                                    {item.source} • {item.data_status}
+                                    {item.source}
                                   </span>
                                 </div>
                               ) : (
-                                <span className="val-neutral">No observation</span>
+                                <span className="val-neutral">No data</span>
                               )}
                             </td>
-                            <td style={{ whiteSpace: 'nowrap' }}>
-                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                            <td style={{ textAlign: 'right' }}>
+                              <div className="table-actions-cell">
                                 <button
                                   type="button"
-                                  className="btn btn-secondary"
-                                  style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                                  className="beacon-btn beacon-btn--ghost-xs"
                                   onClick={() => setSelectedStockId(item.instrument_id)}
-                                  title="Inspect full details, timeline, and evidence"
+                                  title="Inspect full details and timeline"
                                 >
-                                  Detail
+                                  Inspect
                                 </button>
                                 <button
                                   type="button"
-                                  className="btn btn-danger"
-                                  style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                                  className="beacon-btn beacon-btn--danger-xs"
                                   onClick={() => handleRemoveInstrument(item.instrument_id)}
+                                  title="Remove from watchlist"
                                 >
                                   Remove
                                 </button>
@@ -2050,30 +1254,34 @@ function App() {
                     </tbody>
                   </table>
                 ) : (
-                  <div className="empty-state">
+                  <div className="beacon-empty-table">
                     <p>No instruments in this watchlist.</p>
-                    <p style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
-                      Use the search bar above to add stocks (e.g. TCS, RELIANCE, INFY).
+                    <p className="empty-sub">
+                      Use the search bar above to add stocks (e.g. TATAMOTORS, TCS, RELIANCE, INFY).
                     </p>
                   </div>
                 )}
               </div>
             </section>
-          </section>
+          </div>
         ) : (
-          <div className="empty-state">
+          <div className="beacon-empty-card">
             <h3>No watchlist selected</h3>
-            <p style={{ marginTop: '0.5rem' }}>Create a watchlist above to begin tracking instruments.</p>
+            <p style={{ marginTop: '0.5rem', color: 'var(--color-text-muted)' }}>
+              Create a watchlist above to begin tracking instruments.
+            </p>
           </div>
         )}
       </main>
 
       {/* Footer */}
-      <footer className="footer">
-        Smart Market Watchlist &mdash; Milestone 7: Marketaux News Integration &mdash; NSE CM-UDiFF Market Data (Historical EOD)
+      <footer className="beacon-app-footer">
+        <div className="footer-content">
+          <span>BEACON &bull; Know what deserves your attention &bull; Multi-Factor Market Intelligence</span>
+          <span className="footer-provenance">NSE Historical Bhavcopy &bull; Marketaux Context</span>
+        </div>
       </footer>
     </div>
-
   );
 }
 

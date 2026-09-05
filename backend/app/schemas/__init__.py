@@ -42,6 +42,7 @@ from app.schemas.stock_detail import (
     StockDetailResponse,
 )
 from app.schemas.news import RelevantNewsItem, RelevantNewsContext
+from app.schemas.auth import UserRegister, UserLogin, UserResponse, TokenResponse
 
 __all__ = [
     "InstrumentBase",
@@ -83,6 +84,10 @@ __all__ = [
     "StockDetailResponse",
     "RelevantNewsItem",
     "RelevantNewsContext",
+    "UserRegister",
+    "UserLogin",
+    "UserResponse",
+    "TokenResponse",
 ]
 
 
