@@ -1,5 +1,7 @@
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.mark.asyncio
@@ -129,3 +131,40 @@ async def test_watchlist_error_handling(client: AsyncClient):
     # Validation error: empty name -> 422
     res = await client.post("/api/v1/watchlists", json={"name": ""})
     assert res.status_code == 422
+
+    # Validation error: whitespace-only name on create -> 422
+    res_ws = await client.post("/api/v1/watchlists", json={"name": "   "})
+    assert res_ws.status_code == 422
+
+    # Validation error: whitespace-only name on update -> 422
+    res_patch = await client.patch(f"/api/v1/watchlists/{wl_id}", json={"name": "   "})
+    assert res_patch.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_add_watchlist_item_catches_integrity_error_on_commit(client: AsyncClient, db_session):
+    from unittest.mock import AsyncMock, patch
+    from sqlalchemy.exc import IntegrityError
+    from app.models.watchlist import Watchlist, WatchlistItem
+    from app.models.instrument import Instrument
+
+    # Create watchlist and get an instrument
+    wl = Watchlist(user_id=1, name="Concurrency Test WL")
+    db_session.add(wl)
+    await db_session.commit()
+    await db_session.refresh(wl)
+
+    inst_stmt = select(Instrument).limit(1)
+    inst = (await db_session.execute(inst_stmt)).scalar_one()
+
+    # Simulate race condition: bypass pre-check or make commit raise IntegrityError
+    orig_commit = db_session.commit
+
+    with patch.object(
+        AsyncSession,
+        "commit",
+        side_effect=IntegrityError("duplicate key value violates unique constraint", params={}, orig=Exception("uq_watchlist_instrument")),
+    ):
+        res = await client.post(f"/api/v1/watchlists/{wl.id}/items", json={"instrument_id": inst.id})
+        assert res.status_code == 409
+        assert res.json()["detail"] == "Instrument already in watchlist"

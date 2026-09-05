@@ -108,3 +108,69 @@ async def test_watchlist_market_endpoint(client: AsyncClient, db_session: AsyncS
 async def test_market_endpoint_nonexistent_watchlist(client: AsyncClient):
     res = await client.get("/api/v1/watchlists/999999/market")
     assert res.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_market_endpoint_source_consistency_guard(client: AsyncClient, db_session: AsyncSession):
+    s_guard = f"GUARD_{uuid.uuid4().hex[:6]}"
+    inst = Instrument(nse_symbol=s_guard, company_name="Guard Test Company")
+    db_session.add(inst)
+    await db_session.commit()
+    await db_session.refresh(inst)
+
+    t1 = datetime(2026, 9, 1, 15, 30, 0, tzinfo=timezone.utc)
+    t_intervening = datetime(2026, 9, 2, 10, 0, 0, tzinfo=timezone.utc)
+    t2 = datetime(2026, 9, 2, 15, 30, 0, tzinfo=timezone.utc)
+
+    # 1. Day 1 NSE observation
+    obs_nse_1 = MarketObservation(
+        instrument_id=inst.id,
+        price=Decimal("100.00"),
+        volume=1000,
+        observed_at=t1,
+        source="NSE",
+        data_status="final",
+    )
+    # 2. Intervening observation from a DIFFERENT source (e.g. OTHER_FEED)
+    obs_other = MarketObservation(
+        instrument_id=inst.id,
+        price=Decimal("999.00"),
+        volume=5000,
+        observed_at=t_intervening,
+        source="OTHER_FEED",
+        data_status="final",
+    )
+    # 3. Day 2 NSE observation
+    obs_nse_2 = MarketObservation(
+        instrument_id=inst.id,
+        price=Decimal("120.00"),
+        volume=2000,
+        observed_at=t2,
+        source="NSE",
+        data_status="final",
+    )
+    db_session.add_all([obs_nse_1, obs_other, obs_nse_2])
+    await db_session.commit()
+
+    wl = Watchlist(user_id=1, name="Source Guard WL")
+    db_session.add(wl)
+    await db_session.commit()
+    await db_session.refresh(wl)
+
+    item = WatchlistItem(watchlist_id=wl.id, instrument_id=inst.id, position=0)
+    db_session.add(item)
+    await db_session.commit()
+
+    response = await client.get(f"/api/v1/watchlists/{wl.id}/market")
+    assert response.status_code == 200
+    data = response.json()
+    item_market = data["items"][0]
+
+    # Latest should be obs_nse_2 (120.00, NSE)
+    assert float(item_market["latest_price"]) == 120.00
+    assert item_market["source"] == "NSE"
+
+    # Previous observation matched must be obs_nse_1 (100.00, NSE), ignoring obs_other
+    # Change is +20.00 (+20.0%), NOT 120 - 999 = -879
+    assert float(item_market["absolute_change"]) == 20.00
+    assert float(item_market["percentage_change"]) == 20.00

@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     # Database
     # ------------------------------------------------------------------ #
     database_url: str = (
-        "postgresql+asyncpg://smw_user:smw_password@localhost:5432/smw_db"
+        "postgresql+asyncpg://smw_user:smw_password@localhost:5433/smw_db"
+    )
+    test_database_url: str = (
+        "postgresql+asyncpg://smw_user:smw_password@localhost:5433/smw_test_db"
     )
 
     # ------------------------------------------------------------------ #

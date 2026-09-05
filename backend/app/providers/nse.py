@@ -65,9 +65,9 @@ class NSEHistoricalProvider(MarketDataProvider):
                 total_rows += 1
                 row = {k.strip(): (v.strip() if v else "") for k, v in raw_row.items() if k}
 
-                # Filter series if present: standard equity series is 'EQ'
-                series = row.get(self.COL_SERIES, "")
-                if series and series.upper() not in {"EQ", "BE", "SM", "ST"}:
+                # Filter series: restrict to standard equity series 'EQ'
+                series = row.get(self.COL_SERIES, "").strip().upper()
+                if self.COL_SERIES in row and series != "EQ":
                     continue
 
                 symbol = row.get(self.COL_SYMBOL, "").upper()
@@ -104,10 +104,11 @@ class NSEHistoricalProvider(MarketDataProvider):
                     except ValueError:
                         errors.append(f"Line {line_no} ({symbol}): Invalid volume '{volume_raw}'.")
 
-                # Parse observation timestamp
+                # Parse observation timestamp (canonical market close 15:30 IST)
                 observed_at: datetime
                 if date_override is not None:
-                    observed_at = date_override if date_override.tzinfo else date_override.replace(tzinfo=IST)
+                    override_date = date_override.date() if isinstance(date_override, datetime) else date_override
+                    observed_at = datetime.combine(override_date, NSE_MARKET_CLOSE_TIME, tzinfo=IST)
                 else:
                     date_str = row.get(self.COL_TRADE_DATE, "")
                     try:

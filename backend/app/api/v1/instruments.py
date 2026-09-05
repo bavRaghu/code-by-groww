@@ -12,6 +12,7 @@ router = APIRouter(prefix="/instruments", tags=["instruments"])
 @router.get("", response_model=list[InstrumentResponse])
 async def list_instruments(
     search: str | None = Query(None, description="Search by NSE symbol or company name"),
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of instruments to return"),
     db: AsyncSession = Depends(get_db),
 ) -> list[InstrumentResponse]:
     """
@@ -26,6 +27,6 @@ async def list_instruments(
                 Instrument.company_name.ilike(term),
             )
         )
-    stmt = stmt.order_by(Instrument.nse_symbol)
+    stmt = stmt.order_by(Instrument.nse_symbol).limit(limit)
     result = await db.execute(stmt)
     return list(result.scalars().all())

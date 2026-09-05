@@ -9,6 +9,19 @@ from app.schemas.watchlist import (
     WatchlistReorderRequest,
 )
 from app.schemas.market import WatchlistInstrumentMarket, WatchlistMarketResponse
+from app.schemas.change import (
+    WatchlistCheckResponse,
+    DetectedChangeItem,
+    InstrumentStatusItem,
+    ChangesSummary,
+    WatchlistChangesResponse,
+)
+from app.schemas.attention import (
+    AttentionItem,
+    ComponentScores,
+    AttentionSummary,
+    WatchlistAttentionResponse,
+)
 
 __all__ = [
     "InstrumentBase",
@@ -22,4 +35,14 @@ __all__ = [
     "WatchlistReorderRequest",
     "WatchlistInstrumentMarket",
     "WatchlistMarketResponse",
+    "WatchlistCheckResponse",
+    "DetectedChangeItem",
+    "InstrumentStatusItem",
+    "ChangesSummary",
+    "WatchlistChangesResponse",
+    "AttentionItem",
+    "ComponentScores",
+    "AttentionSummary",
+    "WatchlistAttentionResponse",
 ]
+

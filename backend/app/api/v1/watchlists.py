@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,7 +18,19 @@ from app.schemas.watchlist import (
     WatchlistSummaryResponse,
     WatchlistUpdate,
 )
+from app.schemas.change import (
+    ChangesSummary,
+    DetectedChangeItem,
+    InstrumentStatusItem,
+    WatchlistCheckResponse,
+    WatchlistChangesResponse,
+)
+from app.schemas.attention import WatchlistAttentionResponse
+from app.services.user_observation import mark_watchlist_checked
+from app.services.change_detection import detect_changes_for_watchlist
+from app.services.attention import get_watchlist_attention
 from app.seed import DEV_USER_ID
+
 
 router = APIRouter(prefix="/watchlists", tags=["watchlists"])
 
@@ -199,7 +212,14 @@ async def add_watchlist_item(
         position=next_pos,
     )
     db.add(item)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Instrument already in watchlist",
+        )
 
     # Reload with relationship
     stmt = (
@@ -274,3 +294,126 @@ async def reorder_watchlist_items(
 
     watchlist.items.sort(key=lambda x: x.position)
     return watchlist
+
+
+# ----------------------------------------------------------------------
+# User Check & Change Detection
+# ----------------------------------------------------------------------
+
+
+@router.post("/{watchlist_id}/check", response_model=WatchlistCheckResponse)
+async def check_watchlist_endpoint(
+    watchlist_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> WatchlistCheckResponse:
+    try:
+        res = await mark_watchlist_checked(db, DEV_USER_ID, watchlist_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+    return WatchlistCheckResponse(
+        watchlist_id=res.watchlist_id,
+        checked_at=res.checked_at,
+        number_of_instruments=res.number_of_instruments,
+        number_with_market_data=res.number_with_market_data,
+        number_without_market_data=res.number_without_market_data,
+        last_checked_at=res.last_checked_at,
+    )
+
+
+@router.get("/{watchlist_id}/changes", response_model=WatchlistChangesResponse)
+async def get_watchlist_changes(
+    watchlist_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> WatchlistChangesResponse:
+    try:
+        result = await detect_changes_for_watchlist(db, DEV_USER_ID, watchlist_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+    change_items: list[DetectedChangeItem] = []
+    instruments_with_changes_set = set()
+
+    for ch in result.changes:
+        inst = ch.instrument
+        base_obs = ch.baseline_observation
+        curr_obs = ch.current_observation
+
+        evidence = ch.evidence or {}
+        abs_change = evidence.get("absolute_change")
+        pct_change = evidence.get("percentage_change")
+
+        change_items.append(
+            DetectedChangeItem(
+                id=ch.id,
+                instrument_id=ch.instrument_id,
+                symbol=inst.nse_symbol if inst else "",
+                company_name=inst.company_name if inst else "",
+                change_type=ch.change_type,
+                magnitude=ch.magnitude,
+                detected_at=ch.detected_at,
+                observation_start=ch.observation_start,
+                observation_end=ch.observation_end,
+                baseline_observation_id=ch.baseline_observation_id,
+                baseline_price=base_obs.price if base_obs else None,
+                current_observation_id=ch.current_observation_id,
+                current_price=curr_obs.price if curr_obs else None,
+                absolute_change=abs_change,
+                percentage_change=pct_change,
+                evidence=evidence,
+                source=curr_obs.source if curr_obs else "NSE",
+                data_status=curr_obs.data_status if curr_obs else "final",
+                review_status=ch.review_status,
+                reviewed_at=ch.reviewed_at,
+            )
+        )
+        instruments_with_changes_set.add(ch.instrument_id)
+
+    status_items = [
+        InstrumentStatusItem(
+            instrument_id=s.instrument_id,
+            symbol=s.symbol,
+            company_name=s.company_name,
+            baseline_observation_id=s.baseline_observation_id,
+            baseline_observed_at=s.baseline_observed_at,
+            current_observation_id=s.current_observation_id,
+            current_observed_at=s.current_observed_at,
+            status=s.status,
+            diagnostics=s.diagnostics,
+        )
+        for s in result.instrument_statuses
+    ]
+
+    summary = ChangesSummary(
+        total_instruments=len(result.instrument_statuses),
+        instruments_with_changes=len(instruments_with_changes_set),
+        total_candidate_changes=len(change_items),
+        has_unseen_changes=len(change_items) > 0,
+    )
+
+    return WatchlistChangesResponse(
+        watchlist_id=result.watchlist_id,
+        watchlist_name=result.watchlist_name,
+        last_checked_at=result.last_checked_at,
+        changes=change_items,
+        instrument_statuses=status_items,
+        summary=summary,
+    )
+
+
+@router.get("/{watchlist_id}/attention", response_model=WatchlistAttentionResponse)
+async def get_watchlist_attention_endpoint(
+    watchlist_id: int,
+    db: AsyncSession = Depends(get_db),
+) -> WatchlistAttentionResponse:
+    try:
+        return await get_watchlist_attention(db, DEV_USER_ID, watchlist_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+

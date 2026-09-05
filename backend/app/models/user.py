@@ -7,6 +7,8 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.watchlist import Watchlist
+    from app.models.user_observation import UserObservation
+    from app.models.detected_change import DetectedChange
 
 
 class User(Base):
@@ -27,6 +29,16 @@ class User(Base):
 
     watchlists: Mapped[list["Watchlist"]] = relationship(
         "Watchlist",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    user_observations: Mapped[list["UserObservation"]] = relationship(
+        "UserObservation",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    detected_changes: Mapped[list["DetectedChange"]] = relationship(
+        "DetectedChange",
         back_populates="user",
         cascade="all, delete-orphan",
     )

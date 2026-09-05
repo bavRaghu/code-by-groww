@@ -8,6 +8,8 @@ from app.db.base import Base
 if TYPE_CHECKING:
     from app.models.watchlist import WatchlistItem
     from app.models.market_observation import MarketObservation
+    from app.models.user_observation import UserObservation
+    from app.models.detected_change import DetectedChange
 
 
 class Instrument(Base):
@@ -39,6 +41,16 @@ class Instrument(Base):
     )
     market_observations: Mapped[list["MarketObservation"]] = relationship(
         "MarketObservation",
+        back_populates="instrument",
+        cascade="all, delete-orphan",
+    )
+    user_observations: Mapped[list["UserObservation"]] = relationship(
+        "UserObservation",
+        back_populates="instrument",
+        cascade="all, delete-orphan",
+    )
+    detected_changes: Mapped[list["DetectedChange"]] = relationship(
+        "DetectedChange",
         back_populates="instrument",
         cascade="all, delete-orphan",
     )

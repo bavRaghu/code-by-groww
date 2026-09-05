@@ -41,17 +41,17 @@ async def get_watchlist_market(
         if inst is None:
             continue
 
-        # Fetch latest two observations to calculate change
-        obs_stmt = (
+        # Fetch latest observation
+        latest_stmt = (
             select(MarketObservation)
             .where(MarketObservation.instrument_id == inst.id)
-            .order_by(MarketObservation.observed_at.desc())
-            .limit(2)
+            .order_by(MarketObservation.observed_at.desc(), MarketObservation.id.desc())
+            .limit(1)
         )
-        obs_res = await db.execute(obs_stmt)
-        observations = obs_res.scalars().all()
+        latest_res = await db.execute(latest_stmt)
+        latest = latest_res.scalar_one_or_none()
 
-        if not observations:
+        if latest is None:
             # No observation available
             market_items.append(
                 WatchlistInstrumentMarket(
@@ -67,33 +67,29 @@ async def get_watchlist_market(
                     source=None,
                 )
             )
-        elif len(observations) == 1:
-            # Only latest observation, no previous observation to calculate change
-            latest = observations[0]
-            market_items.append(
-                WatchlistInstrumentMarket(
-                    instrument_id=inst.id,
-                    symbol=inst.nse_symbol,
-                    company_name=inst.company_name,
-                    latest_price=latest.price,
-                    absolute_change=None,
-                    percentage_change=None,
-                    volume=latest.volume,
-                    observed_at=latest.observed_at,
-                    data_status=latest.data_status,
-                    source=latest.source,
-                )
-            )
         else:
-            # Latest and previous observations available
-            latest = observations[0]
-            previous = observations[1]
-            abs_change = latest.price - previous.price
-            pct_change = (
-                round(((latest.price - previous.price) / previous.price) * Decimal("100"), 4)
-                if previous.price > 0
-                else None
+            # Fetch strictly prior observation from the same source to calculate change
+            prev_stmt = (
+                select(MarketObservation)
+                .where(
+                    MarketObservation.instrument_id == inst.id,
+                    MarketObservation.source == latest.source,
+                    MarketObservation.observed_at < latest.observed_at,
+                )
+                .order_by(MarketObservation.observed_at.desc(), MarketObservation.id.desc())
+                .limit(1)
             )
+            prev_res = await db.execute(prev_stmt)
+            previous = prev_res.scalar_one_or_none()
+
+            abs_change: Decimal | None = None
+            pct_change: Decimal | None = None
+            if previous is not None:
+                abs_change = round(latest.price - previous.price, 4)
+                if previous.price > 0:
+                    pct_change = round(
+                        ((latest.price - previous.price) / previous.price) * Decimal("100"), 4
+                    )
 
             market_items.append(
                 WatchlistInstrumentMarket(
@@ -101,7 +97,7 @@ async def get_watchlist_market(
                     symbol=inst.nse_symbol,
                     company_name=inst.company_name,
                     latest_price=latest.price,
-                    absolute_change=round(abs_change, 4),
+                    absolute_change=abs_change,
                     percentage_change=pct_change,
                     volume=latest.volume,
                     observed_at=latest.observed_at,

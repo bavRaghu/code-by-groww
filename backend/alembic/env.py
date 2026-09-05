@@ -15,6 +15,9 @@ from app.models import (  # noqa: F401
     Watchlist,
     WatchlistItem,
     MarketObservation,
+    UserObservation,
+    DetectedChange,
+    SignificanceAssessment,
 )
 
 config = context.config

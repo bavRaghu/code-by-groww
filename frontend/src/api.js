@@ -61,3 +61,21 @@ export async function removeInstrumentFromWatchlist(watchlistId, instrumentId) {
   });
   return handleResponse(res);
 }
+
+export async function checkWatchlist(watchlistId) {
+  const res = await fetch(`${BASE_URL}/api/v1/watchlists/${watchlistId}/check`, {
+    method: 'POST',
+  });
+  return handleResponse(res);
+}
+
+export async function fetchWatchlistChanges(watchlistId) {
+  const res = await fetch(`${BASE_URL}/api/v1/watchlists/${watchlistId}/changes`);
+  return handleResponse(res);
+}
+
+export async function fetchWatchlistAttention(watchlistId) {
+  const res = await fetch(`${BASE_URL}/api/v1/watchlists/${watchlistId}/attention`);
+  return handleResponse(res);
+}
+
