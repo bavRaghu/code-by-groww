@@ -580,6 +580,45 @@ export default function LandingPage({ onOpenAuth, onDemoLogin, demoLoading, demo
               </div>
             </div>
           </div>
+
+          {/* Deterministic Walkthrough Workflow Sequence */}
+          <div className="walkthrough-guide">
+            <div className="walkthrough-header">
+              <span className="walkthrough-title">Deterministic Evaluator Walkthrough</span>
+              <span className="walkthrough-subtitle">Core Product Loop</span>
+            </div>
+
+            <div className="walkthrough-steps">
+              <div className="walkthrough-step">
+                <span className="walkthrough-step__num">01</span>
+                <div className="walkthrough-step__content">
+                  <h4>Observe Baseline</h4>
+                  <p>Check active watchlist snapshot and baseline prices from previous check-in.</p>
+                </div>
+              </div>
+              <div className="walkthrough-step">
+                <span className="walkthrough-step__num">02</span>
+                <div className="walkthrough-step__content">
+                  <h4>Check for Changes</h4>
+                  <p>Run change detection against newly available market observations without advancing state.</p>
+                </div>
+              </div>
+              <div className="walkthrough-step">
+                <span className="walkthrough-step__num">03</span>
+                <div className="walkthrough-step__content">
+                  <h4>Inspect Attention Feed</h4>
+                  <p>Review High and Medium attention cards, multi-factor evidence, and supporting Marketaux news.</p>
+                </div>
+              </div>
+              <div className="walkthrough-step">
+                <span className="walkthrough-step__num">04</span>
+                <div className="walkthrough-step__content">
+                  <h4>Review &amp; Advance</h4>
+                  <p>Mark items as reviewed to update your personal observation baseline for the next cycle.</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
