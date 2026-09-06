@@ -310,53 +310,6 @@ export default function StockDetailView({ instrumentId, watchlistId, onBack, onR
             )}
           </div>
         </div>
-
-        {/* Card: Market & Benchmark Context */}
-        <div className="stock-detail-card market-context-card">
-          <div className="stock-detail-card__header">
-            <div className="stock-detail-card__title">
-              <Activity size={16} className="card-header-icon" />
-              <span>Broad Market Context</span>
-            </div>
-            <span className="status-badge status-badge--final">{market_context?.benchmark_symbol || 'NIFTY 50'}</span>
-          </div>
-
-          <div className="stock-detail-card__body">
-            <div className="market-context-grid">
-              <div className="context-metric">
-                <span className="context-metric__label">{nse_symbol} Return</span>
-                <span className={`context-metric__val ${sycIsUp ? 'val-positive' : sycIsDown ? 'val-negative' : 'val-neutral'}`}>
-                  {market_context?.stock_return !== null && market_context?.stock_return !== undefined
-                    ? `${market_context.stock_return > 0 ? '+' : ''}${market_context.stock_return.toFixed(2)}%`
-                    : '—'}
-                </span>
-              </div>
-              <div className="context-metric">
-                <span className="context-metric__label">{market_context?.benchmark_symbol || 'Benchmark'} Return</span>
-                <span className="context-metric__val val-neutral">
-                  {market_context?.benchmark_return !== null && market_context?.benchmark_return !== undefined
-                    ? `${market_context.benchmark_return > 0 ? '+' : ''}${market_context.benchmark_return.toFixed(2)}%`
-                    : 'Unavailable'}
-                </span>
-              </div>
-              <div className="context-metric">
-                <span className="context-metric__label">Relative Performance</span>
-                <span className={`context-metric__val ${
-                  market_context?.excess_return && market_context.excess_return > 0 ? 'val-positive' :
-                  market_context?.excess_return && market_context.excess_return < 0 ? 'val-negative' : 'val-neutral'
-                }`}>
-                  {market_context?.excess_return !== null && market_context?.excess_return !== undefined
-                    ? `${market_context.excess_return > 0 ? '+' : ''}${market_context.excess_return.toFixed(2)} pts`
-                    : '—'}
-                </span>
-              </div>
-            </div>
-
-            <div className="market-context-summary">
-              {market_context?.context_summary}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Card: Why This Was Flagged / Evidence Breakdown */}
@@ -408,12 +361,12 @@ export default function StockDetailView({ instrumentId, watchlistId, onBack, onR
                     <div className="component-pill">
                       <span className="component-pill__name">Magnitude</span>
                       <span className="component-pill__score">{Number(evidence.component_scores.magnitude ?? 0).toFixed(2)}</span>
-                      <span className="component-pill__weight">35%</span>
+                      <span className="component-pill__weight">25%</span>
                     </div>
                     <div className="component-pill">
                       <span className="component-pill__name">Abnormality</span>
                       <span className="component-pill__score">{Number(evidence.component_scores.abnormality ?? 0).toFixed(2)}</span>
-                      <span className="component-pill__weight">30%</span>
+                      <span className="component-pill__weight">25%</span>
                     </div>
                     <div className="component-pill">
                       <span className="component-pill__name">Relative Perf</span>
@@ -428,7 +381,7 @@ export default function StockDetailView({ instrumentId, watchlistId, onBack, onR
                     <div className="component-pill">
                       <span className="component-pill__name">Event</span>
                       <span className="component-pill__score">{Number(evidence.component_scores.event ?? 0).toFixed(2)}</span>
-                      <span className="component-pill__weight">10%</span>
+                      <span className="component-pill__weight">15%</span>
                     </div>
                   </div>
                 </div>

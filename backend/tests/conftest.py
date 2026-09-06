@@ -5,10 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.config import settings
 from app.db.base import Base
 from app.db.session import get_db
-from app.models.user import User  # noqa: F401
-from app.models.instrument import Instrument  # noqa: F401
-from app.models.watchlist import Watchlist, WatchlistItem  # noqa: F401
-from app.models.market_observation import MarketObservation  # noqa: F401
+import app.models  # noqa: F401
 from app.main import app
 from app.seed import seed_dev_data
 
@@ -42,7 +39,7 @@ async def setup_test_db():
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     async with TestAsyncSessionLocal() as session:
-        await seed_dev_data(session)
+        await seed_dev_data(session, seed_demo_market_data=False)
     app.dependency_overrides[get_db] = _override_get_db
     yield
     app.dependency_overrides.clear()

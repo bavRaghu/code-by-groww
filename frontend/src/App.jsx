@@ -956,11 +956,11 @@ function App() {
                           <div className="accordion-body">
                             <div className="provenance-metric-grid">
                               <div className="prov-item">
-                                <span className="prov-label">Magnitude Factor (35%)</span>
+                                <span className="prov-label">Magnitude Factor (25%)</span>
                                 <span className="prov-val">{Number(item.component_scores?.magnitude ?? 0).toFixed(2)}</span>
                               </div>
                               <div className="prov-item">
-                                <span className="prov-label">Abnormality Factor (30%)</span>
+                                <span className="prov-label">Abnormality Factor (25%)</span>
                                 <span className="prov-val">{Number(item.component_scores?.abnormality ?? 0).toFixed(2)}</span>
                               </div>
                               <div className="prov-item">
@@ -970,6 +970,10 @@ function App() {
                               <div className="prov-item">
                                 <span className="prov-label">Volume Anomaly (15%)</span>
                                 <span className="prov-val">{Number(item.component_scores?.volume ?? 0).toFixed(2)}</span>
+                              </div>
+                              <div className="prov-item">
+                                <span className="prov-label">Event Context (15%)</span>
+                                <span className="prov-val">{Number(item.component_scores?.event ?? 0).toFixed(2)}</span>
                               </div>
                             </div>
 
