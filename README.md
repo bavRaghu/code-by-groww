@@ -367,6 +367,10 @@ npm run build
 6. Graceful Degradation: If Marketaux returns rate limits (HTTP 429), timeouts, or server errors, the attention feed continues functioning with full quantitative fidelity, displaying clean fallbacks.
 7. Lightweight JWT without Heavy Auth Dependencies: Authentication uses standard library `hashlib.scrypt` and RFC 7519 HMAC-SHA256 JWT tokens. This eliminates heavy external dependencies like passlib, bcrypt, or complex auth microservices while adhering to NIST and OWASP standards.
 
+## Scaling & Trade-offs
+
+Beacon uses a stateless FastAPI application layer with PostgreSQL as the durable source of truth for market observations, derived intelligence, and user state. The current implementation is intentionally optimized for simplicity rather than premature infrastructure. For larger watchlists, the primary optimization would be batching historical-observation and baseline lookups by instrument and paginating search and attention results to avoid query amplification and unbounded responses. As concurrent usage grows, the API layer can scale horizontally while PostgreSQL remains the consistency boundary. External market and news providers are isolated behind provider interfaces, allowing caching or asynchronous ingestion to be introduced when provider latency, rate limits, or request volume justify the added complexity. Redis, queues, and microservices were intentionally avoided in V1 because their operational cost was not justified by the expected workload.
+
 ## Limitations and Future Improvements
 
 1. End-of-Day Data Granularity: The current market data provider parses daily NSE CM-UDiFF Bhavcopy files. Intraday minute-by-minute ticks are not currently ingested.
