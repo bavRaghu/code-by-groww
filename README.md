@@ -135,11 +135,11 @@ Significance scoring evaluates an observed price move across 5 components. Each 
 
 | Component | Weight | Description |
 | :--- | :--- | :--- |
-| Magnitude | 0.30 | Move size relative to instrument's historical absolute returns distribution. Uses empirical percentile rank when >= 3 historical observations exist; linear fallback otherwise. |
+| Magnitude | 0.25 | Move size relative to instrument's historical absolute returns distribution. Uses empirical percentile rank when >= 3 historical observations exist; linear fallback otherwise. |
 | Abnormality | 0.25 | Statistical deviation from mean return using historical z-score (`min(abs(z) / 3.0, 1.0)`). |
 | Relative Performance | 0.20 | Excess return compared against market benchmark (NIFTY 50) over the same period. |
 | Volume Surge | 0.15 | Current trading volume divided by trailing average volume. |
-| Material Events | 0.10 | Corporate actions, earnings releases, or regulatory filings during the window. |
+| Material Events | 0.15 | Corporate actions, earnings releases, or regulatory filings during the window. |
 
 ### Available Evidence Re-weighting
 
